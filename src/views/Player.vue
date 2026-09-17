@@ -161,9 +161,22 @@ onBeforeUnmount(() => io?.disconnect())
 
       <!-- 顶部栏 -->
       <header class="top">
-        <button class="icon" @click="back">‹</button>
+        <button class="icon" aria-label="返回" @click="back">
+          <svg viewBox="0 0 24 24" width="26" height="26" aria-hidden="true">
+            <path fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" d="M15 5l-7 7 7 7" />
+          </svg>
+        </button>
         <div class="top-title">{{ drama.title }} · 第{{ current }}集</div>
-        <button class="icon" @click="muted = !muted">{{ muted ? '🔇' : '🔊' }}</button>
+        <button class="icon" :aria-label="muted ? '取消静音' : '静音'" @click="muted = !muted">
+          <svg v-if="muted" viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3z" />
+            <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M16 9l5 6m0-6l-5 6" />
+          </svg>
+          <svg v-else viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+            <path fill="currentColor" d="M3 9v6h4l5 5V4L7 9H3z" />
+            <path fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" d="M16 8.5a5 5 0 0 1 0 7M18.5 5.5a9 9 0 0 1 0 13" />
+          </svg>
+        </button>
       </header>
 
       <!-- 底部信息 -->
@@ -242,13 +255,12 @@ onBeforeUnmount(() => io?.disconnect())
 }
 .icon {
   pointer-events: auto;
-  width: 36px;
-  height: 36px;
-  font-size: 24px;
-  line-height: 36px;
-  text-align: center;
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
   color: #fff;
-  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.6);
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.6));
 }
 .bottom {
   bottom: 0;

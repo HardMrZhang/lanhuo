@@ -44,14 +44,28 @@ watch(
 <style scoped>
 /* 与内容区共用 container，文字左边缘与卡片左边缘对齐 */
 .tabs-wrap {
+  position: relative;
   background: var(--bg-2);
   border-bottom: 1px solid var(--border);
+}
+/* 右侧渐隐，提示还能横向滑动 */
+.tabs-wrap::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 1px;
+  width: 36px;
+  background: linear-gradient(to right, transparent, var(--bg-2));
+  pointer-events: none;
 }
 .tabs {
   display: flex;
   gap: 24px;
   overflow-x: auto;
   white-space: nowrap;
+  padding-right: 36px;
+  scroll-padding-inline: var(--gutter);
 }
 .tab {
   flex: 0 0 auto;

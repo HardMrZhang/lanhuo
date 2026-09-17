@@ -99,25 +99,26 @@ function back() {
             <div v-if="drama.tags?.length" class="tags">
               <span v-for="t in drama.tags" :key="t" class="tag">{{ t }}</span>
             </div>
-            <div class="actions">
-              <button class="btn primary" @click="playMain">
-                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                  <path fill="currentColor" d="M8 5v14l11-7z" />
-                </svg>
-                {{ lastEp ? `继续观看 第${lastEp}集` : '立即播放' }}
-              </button>
-              <button class="btn" :data-on="fav" @click="toggleFav">
-                <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-                  <path
-                    :fill="fav ? 'currentColor' : 'none'"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    d="M12 20.5 3.8 12.6a4.6 4.6 0 0 1 6.5-6.5L12 7.8l1.7-1.7a4.6 4.6 0 0 1 6.5 6.5z"
-                  />
-                </svg>
-                {{ fav ? '已追剧' : '追剧' }}
-              </button>
-            </div>
+          </div>
+          <!-- 手机：整行放在封面下方；桌面：落在信息栏底部 -->
+          <div class="actions">
+            <button class="btn primary" @click="playMain">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path fill="currentColor" d="M8 5v14l11-7z" />
+              </svg>
+              {{ lastEp ? `继续观看 第${lastEp}集` : '立即播放' }}
+            </button>
+            <button class="btn" :data-on="fav" @click="toggleFav">
+              <svg viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
+                <path
+                  :fill="fav ? 'currentColor' : 'none'"
+                  stroke="currentColor"
+                  stroke-width="2"
+                  d="M12 20.5 3.8 12.6a4.6 4.6 0 0 1 6.5-6.5L12 7.8l1.7-1.7a4.6 4.6 0 0 1 6.5 6.5z"
+                />
+              </svg>
+              {{ fav ? '已追剧' : '追剧' }}
+            </button>
           </div>
         </div>
       </section>
@@ -217,23 +218,29 @@ function back() {
   filter: blur(28px) brightness(0.35);
   transform: scale(1.1);
 }
+/* 手机：封面 | 信息 两栏，按钮整行在下；桌面：封面跨两行，按钮落在信息栏底部 */
 .hero-inner {
   position: relative;
-  display: flex;
-  gap: 14px;
+  display: grid;
+  grid-template-columns: 104px minmax(0, 1fr);
+  grid-template-areas:
+    'poster info'
+    'actions actions';
+  column-gap: 14px;
+  row-gap: 16px;
   padding-top: 16px;
   padding-bottom: 18px;
 }
 .poster {
-  flex: 0 0 112px;
-  width: 112px;
+  grid-area: poster;
+  width: 100%;
   aspect-ratio: 3 / 4;
   object-fit: cover;
   border-radius: var(--radius);
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.5);
 }
 .info {
-  flex: 1;
+  grid-area: info;
   min-width: 0;
   display: flex;
   flex-direction: column;
@@ -273,18 +280,17 @@ function back() {
   color: var(--fg);
 }
 .actions {
+  grid-area: actions;
   display: flex;
-  gap: 8px;
-  margin-top: auto;
-  padding-top: 12px;
+  gap: 10px;
 }
 .btn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
-  height: 36px;
-  padding: 0 14px;
+  height: 42px;
+  padding: 0 16px;
   border-radius: var(--radius);
   background: rgba(255, 255, 255, 0.12);
   color: var(--fg);
@@ -396,22 +402,24 @@ function back() {
     height: 56px;
   }
   .hero-inner {
-    gap: 28px;
+    grid-template-columns: 200px minmax(0, 1fr);
+    grid-template-areas:
+      'poster info'
+      'poster actions';
+    align-items: end;
+    column-gap: 28px;
+    row-gap: 20px;
     padding-top: 32px;
     padding-bottom: 32px;
   }
-  .poster {
-    flex-basis: 200px;
-    width: 200px;
+  .info {
+    align-self: start;
   }
   .title {
     font-size: 28px;
   }
   .sub {
     font-size: 13px;
-  }
-  .actions {
-    margin-top: 20px;
   }
   .btn.primary {
     flex: 0 0 auto;
