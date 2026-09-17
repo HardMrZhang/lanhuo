@@ -1,0 +1,54 @@
+{
+  "categories": [
+    { "id": "urban", "name": "都市" },
+    { "id": "romance", "name": "甜宠" },
+    { "id": "costume", "name": "古装" },
+    { "id": "suspense", "name": "悬疑" },
+    { "id": "comeback", "name": "逆袭" },
+    { "id": "anime", "name": "漫剧" }
+  ],
+  "dramas": [
+    {
+      "id": "demo-hls",
+      "title": "示例 · HLS 自适应流",
+      "cover": "https://picsum.photos/seed/duanju-1/300/400",
+      "description": "演示 .m3u8 多码率自适应播放。把 episodes 里的 src 换成你自己的 /media/xxx/index.m3u8 即可。",
+      "categoryIds": ["urban", "comeback"],
+      "tags": ["示例", "HLS"],
+      "status": "completed",
+      "views": 128000,
+      "episodes": [
+        { "no": 1, "title": "第1集 · 自适应码率", "src": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" },
+        { "no": 2, "title": "第2集 · 单码率", "src": "https://test-streams.mux.dev/x36xhzz/url_0/193039199_mp4_h264_aac_hd_7.m3u8" }
+      ]
+    },
+    {
+      "id": "demo-mp4",
+      "title": "示例 · MP4 直链",
+      "cover": "https://picsum.photos/seed/duanju-2/300/400",
+      "description": "演示普通 mp4 播放（支持 Range 拖动）。本地文件放到 media/ 目录后用 /media/文件名.mp4 引用。",
+      "categoryIds": ["romance"],
+      "tags": ["示例", "MP4"],
+      "status": "ongoing",
+      "views": 5600,
+      "episodes": [
+        { "no": 1, "src": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4" },
+        { "no": 2, "src": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4" },
+        { "no": 3, "src": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4" }
+      ]
+    },
+    {
+      "id": "demo-local",
+      "title": "示例 · 本地媒体目录",
+      "cover": "https://picsum.photos/seed/duanju-3/300/400",
+      "description": "把视频放到 media/demo-local/ 下，运行 npm run hls 转成 HLS 后即可播放。此条目在你放入文件前会播放失败。",
+      "categoryIds": ["costume", "suspense"],
+      "tags": ["示例", "本地"],
+      "status": "completed",
+      "episodes": [
+        "/media/demo-local/ep01/index.m3u8",
+        "/media/demo-local/ep02/index.m3u8"
+      ]
+    }
+  ]
+}

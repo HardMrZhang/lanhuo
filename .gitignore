@@ -1,0 +1,10 @@
+node_modules/
+dist/
+.DS_Store
+*.log
+.env
+.env.*
+
+# 媒体文件不入库（体积大），目录结构保留
+media/*
+!media/.gitkeep
