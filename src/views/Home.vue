@@ -130,13 +130,13 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   gap: 14px;
-  height: 52px;
+  height: 56px;
 }
 .logo {
   display: inline-flex;
   align-items: center;
   flex: 0 0 auto;
-  font-size: 20px;
+  font-size: 22px;
   font-weight: 900;
   line-height: 1;
   white-space: nowrap;
@@ -154,12 +154,12 @@ onMounted(async () => {
 .search {
   position: relative;
   flex: 1;
-  max-width: 480px;
-  height: 34px;
+  max-width: 520px;
+  height: 38px;
 }
 .search-icon {
   position: absolute;
-  left: 10px;
+  left: 12px;
   top: 50%;
   transform: translateY(-50%);
   color: var(--fg-3);
@@ -168,7 +168,8 @@ onMounted(async () => {
 .search input {
   width: 100%;
   height: 100%;
-  padding: 0 12px 0 32px;
+  padding: 0 12px 0 36px;
+  font-size: 15px;
   border: 1px solid transparent;
   border-radius: var(--radius);
   background: var(--bg-2);
@@ -200,7 +201,7 @@ onMounted(async () => {
 }
 .section-title {
   margin: 0;
-  font-size: 16px;
+  font-size: 18px;
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
@@ -208,9 +209,9 @@ onMounted(async () => {
 }
 .sorts {
   display: flex;
-  gap: 14px;
+  gap: 16px;
   flex: 0 0 auto;
-  font-size: 13px;
+  font-size: 15px;
 }
 .sort {
   color: var(--fg-2);
@@ -246,21 +247,37 @@ onMounted(async () => {
 }
 @media (min-width: 960px) {
   .header-inner {
-    height: 56px;
+    height: 64px;
     gap: 32px;
   }
   .logo {
-    font-size: 22px;
+    font-size: 26px;
+  }
+  .logo-b {
+    padding: 4px 7px;
+  }
+  .search {
+    height: 42px;
+  }
+  .search input {
+    font-size: 16px;
   }
   .content {
-    padding-top: 20px;
+    padding-top: 24px;
+  }
+  .section-head {
+    margin-bottom: 16px;
   }
   .section-title {
-    font-size: 18px;
+    font-size: 22px;
+  }
+  .sorts {
+    gap: 20px;
+    font-size: 16px;
   }
   .grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 22px 14px;
+    gap: 26px 16px;
   }
 }
 @media (min-width: 1280px) {
@@ -269,8 +286,28 @@ onMounted(async () => {
   }
 }
 @media (min-width: 1600px) {
+  .header-inner {
+    height: 72px;
+  }
+  .logo {
+    font-size: 30px;
+  }
+  .search {
+    height: 46px;
+    max-width: 600px;
+  }
+  .search input {
+    font-size: 17px;
+  }
+  .section-title {
+    font-size: 24px;
+  }
+  .sorts {
+    font-size: 17px;
+  }
   .grid {
     grid-template-columns: repeat(7, minmax(0, 1fr));
+    gap: 30px 18px;
   }
 }
 

@@ -417,18 +417,59 @@ function back() {
     flex: 0 0 auto;
     padding: 0 24px;
   }
+  .top-title {
+    font-size: 17px;
+  }
+  .tag {
+    font-size: 13px;
+    padding: 3px 9px;
+  }
+  .btn {
+    height: 42px;
+    font-size: 16px;
+  }
   .block {
     padding-top: 28px;
   }
   .block-title {
-    font-size: 18px;
+    font-size: 20px;
+  }
+  .block-sub {
+    font-size: 14px;
+  }
+  .desc {
+    font-size: 16px;
+  }
+  .more {
+    font-size: 14px;
   }
   .eps {
     grid-template-columns: repeat(15, minmax(0, 1fr));
+    gap: 10px;
+  }
+  .ep {
+    font-size: 17px;
   }
   .grid {
     grid-template-columns: repeat(6, minmax(0, 1fr));
     gap: 24px 14px;
+  }
+}
+@media (min-width: 1600px) {
+  .title {
+    font-size: 32px;
+  }
+  .sub {
+    font-size: 15px;
+  }
+  .block-title {
+    font-size: 22px;
+  }
+  .eps {
+    grid-template-columns: repeat(20, minmax(0, 1fr));
+  }
+  .grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 }
 </style>

@@ -79,8 +79,8 @@ function formatViews(n?: number) {
   color: #fff;
 }
 .title {
-  margin-top: 6px;
-  font-size: 14px;
+  margin-top: 8px;
+  font-size: 15px;
   line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 2;
@@ -94,10 +94,36 @@ function formatViews(n?: number) {
   display: flex;
   align-items: center;
   gap: 5px;
-  margin-top: 3px;
-  font-size: 12px;
+  margin-top: 4px;
+  font-size: 13px;
   color: var(--fg-2);
   white-space: nowrap;
+}
+@media (min-width: 960px) {
+  .title {
+    font-size: 16px;
+  }
+  .meta {
+    font-size: 14px;
+  }
+  .hd,
+  .dur {
+    font-size: 12px;
+    padding: 4px 6px;
+  }
+}
+@media (min-width: 1600px) {
+  .title {
+    margin-top: 10px;
+    font-size: 17px;
+  }
+  .meta {
+    font-size: 15px;
+  }
+  .hd,
+  .dur {
+    font-size: 13px;
+  }
 }
 .dot {
   color: var(--fg-3);

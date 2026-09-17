@@ -49,18 +49,36 @@ watch(
 }
 .tabs {
   display: flex;
-  gap: 22px;
+  gap: 24px;
   overflow-x: auto;
   white-space: nowrap;
 }
 .tab {
   flex: 0 0 auto;
   position: relative;
-  padding: 13px 0 11px;
-  font-size: 14px;
+  padding: 14px 0 12px;
+  font-size: 15px;
   font-weight: 600;
   color: var(--fg-2);
   transition: color 0.15s;
+}
+@media (min-width: 960px) {
+  .tabs {
+    gap: 30px;
+  }
+  .tab {
+    padding: 16px 0 14px;
+    font-size: 17px;
+  }
+}
+@media (min-width: 1600px) {
+  .tabs {
+    gap: 34px;
+  }
+  .tab {
+    padding: 18px 0 16px;
+    font-size: 18px;
+  }
 }
 .tab::after {
   content: '';
