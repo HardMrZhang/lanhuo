@@ -227,15 +227,20 @@ onMounted(async () => {
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 18px 10px;
+  gap: 16px 10px;
   transition: opacity 0.15s;
 }
 .grid.dim {
   opacity: 0.6;
 }
-@media (min-width: 640px) {
+@media (min-width: 560px) {
   .grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+@media (min-width: 768px) {
+  .grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
     gap: 20px 12px;
   }
 }
@@ -254,13 +259,18 @@ onMounted(async () => {
     font-size: 18px;
   }
   .grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 24px 14px;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 22px 14px;
   }
 }
 @media (min-width: 1280px) {
   .grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
+    grid-template-columns: repeat(6, minmax(0, 1fr));
+  }
+}
+@media (min-width: 1600px) {
+  .grid {
+    grid-template-columns: repeat(7, minmax(0, 1fr));
   }
 }
 

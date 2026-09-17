@@ -10,8 +10,8 @@
   --border: #2c2c2c;
   --radius: 4px;
   /* 所有区块共用的水平内边距与最大宽度，保证左边缘对齐 */
-  --gutter: 12px;
-  --container: 1280px;
+  --gutter: 10px;
+  --container: 1760px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   color-scheme: dark;
@@ -69,6 +69,11 @@ img {
 
 @media (min-width: 960px) {
   :root {
-    --gutter: 24px;
+    --gutter: 16px;
+  }
+}
+@media (min-width: 1440px) {
+  :root {
+    --gutter: 20px;
   }
 }

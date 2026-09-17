@@ -10,7 +10,8 @@
     "build": "vue-tsc --noEmit && vite build",
     "start": "NODE_ENV=production node server/index.js",
     "preview": "vite preview",
-    "hls": "bash scripts/to-hls.sh"
+    "hls": "bash scripts/to-hls.sh",
+    "gen:mock": "node scripts/gen-mock.mjs"
   },
   "dependencies": {
     "compression": "^1.7.4",
