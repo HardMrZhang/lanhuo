@@ -5,8 +5,8 @@ defineProps<{ drama: DramaSummary }>()
 
 function formatViews(n?: number) {
   if (!n) return '0'
-  if (n >= 1e8) return `${(n / 1e8).toFixed(1)}亿`
-  if (n >= 1e4) return `${(n / 1e4).toFixed(1)}万`
+  if (n >= 1e8) return `${(n / 1e8).toFixed(1).replace(/\.0$/, '')}亿`
+  if (n >= 1e4) return `${(n / 1e4).toFixed(1).replace(/\.0$/, '')}万`
   return String(n)
 }
 </script>
@@ -20,16 +20,19 @@ function formatViews(n?: number) {
     </div>
     <div class="title" :title="drama.title">{{ drama.title }}</div>
     <div class="meta">
-      <span class="views">{{ formatViews(drama.views) }} 次播放</span>
-      <span v-if="drama.rating != null" class="rating">
-        <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
-          <path
-            fill="currentColor"
-            d="M3 7h2.5v7H3zM6.5 14V7.2L9.3 1.5c.9 0 1.6.8 1.4 1.7L10.2 6H14a1.5 1.5 0 0 1 1.4 2l-1.7 5A1.5 1.5 0 0 1 12.3 14z"
-          />
-        </svg>
-        {{ drama.rating }}%
-      </span>
+      <span>{{ formatViews(drama.views) }}次播放</span>
+      <template v-if="drama.rating != null">
+        <span class="dot">·</span>
+        <span class="rating">
+          <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+            <path
+              fill="currentColor"
+              d="M3 7h2.5v7H3zM6.5 14V7.2L9.3 1.5c.9 0 1.6.8 1.4 1.7L10.2 6H14a1.5 1.5 0 0 1 1.4 2l-1.7 5A1.5 1.5 0 0 1 12.3 14z"
+            />
+          </svg>
+          {{ drama.rating }}%
+        </span>
+      </template>
     </div>
   </router-link>
 </template>
@@ -64,7 +67,6 @@ function formatViews(n?: number) {
   line-height: 1;
   padding: 3px 5px;
   border-radius: 2px;
-  color: #fff;
 }
 .hd {
   left: 6px;
@@ -73,13 +75,13 @@ function formatViews(n?: number) {
 }
 .dur {
   right: 6px;
-  background: rgba(0, 0, 0, 0.8);
+  background: rgba(0, 0, 0, 0.75);
+  color: #fff;
 }
 .title {
-  margin-top: 8px;
+  margin-top: 6px;
   font-size: 14px;
-  font-weight: 400;
-  line-height: 1.3;
+  line-height: 1.35;
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
@@ -90,11 +92,15 @@ function formatViews(n?: number) {
 }
 .meta {
   display: flex;
-  justify-content: space-between;
   align-items: center;
-  margin-top: 4px;
+  gap: 5px;
+  margin-top: 3px;
   font-size: 12px;
   color: var(--fg-2);
+  white-space: nowrap;
+}
+.dot {
+  color: var(--fg-3);
 }
 .rating {
   display: inline-flex;

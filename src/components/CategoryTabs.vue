@@ -26,58 +26,60 @@ watch(
 </script>
 
 <template>
-  <nav ref="bar" class="tabs">
-    <button
-      v-for="c in categories"
-      :key="c.id"
-      class="tab"
-      :data-active="c.id === modelValue"
-      @click="select(c.id)"
-    >
-      {{ c.name }}
-    </button>
+  <nav class="tabs-wrap">
+    <div ref="bar" class="tabs container">
+      <button
+        v-for="c in categories"
+        :key="c.id"
+        class="tab"
+        :data-active="c.id === modelValue"
+        @click="select(c.id)"
+      >
+        {{ c.name }}
+      </button>
+    </div>
   </nav>
 </template>
 
 <style scoped>
-/* 顶栏下方的横向导航：深灰底、白字，选中项橙色下划线 */
-.tabs {
-  display: flex;
-  gap: 0;
-  padding: 0 8px;
-  overflow-x: auto;
-  white-space: nowrap;
+/* 与内容区共用 container，文字左边缘与卡片左边缘对齐 */
+.tabs-wrap {
   background: var(--bg-2);
   border-bottom: 1px solid var(--border);
+}
+.tabs {
+  display: flex;
+  gap: 22px;
+  overflow-x: auto;
+  white-space: nowrap;
 }
 .tab {
   flex: 0 0 auto;
   position: relative;
-  padding: 12px 14px;
+  padding: 13px 0 11px;
   font-size: 14px;
-  font-weight: 700;
-  color: var(--fg);
-  text-transform: uppercase;
+  font-weight: 600;
+  color: var(--fg-2);
   transition: color 0.15s;
 }
 .tab::after {
   content: '';
   position: absolute;
-  left: 14px;
-  right: 14px;
-  bottom: 0;
-  height: 3px;
+  left: 0;
+  right: 0;
+  bottom: -1px;
+  height: 2px;
   background: var(--accent);
-  transform: scaleX(0);
-  transition: transform 0.15s;
+  opacity: 0;
+  transition: opacity 0.15s;
 }
 .tab:hover {
-  color: var(--accent);
+  color: var(--fg);
 }
 .tab[data-active='true'] {
-  color: var(--accent);
+  color: var(--fg);
 }
 .tab[data-active='true']::after {
-  transform: scaleX(1);
+  opacity: 1;
 }
 </style>

@@ -17,7 +17,6 @@ const categories = ref<Category[]>([])
 const active = ref('all')
 const sort = ref<(typeof SORTS)[number]['id']>('hot')
 const keyword = ref('')
-const searchOpen = ref(false)
 const dramas = ref<DramaSummary[]>([])
 const loading = ref(false)
 const error = ref('')
@@ -59,21 +58,14 @@ onMounted(async () => {
 
 <template>
   <div class="home">
-    <!-- 顶栏：黑底，logo 第二个字放橙色圆角块 -->
+    <!-- 顶栏 -->
     <header class="header">
-      <router-link class="logo" to="/">
-        <span class="logo-a">短</span><span class="logo-b">剧</span>
-      </router-link>
-      <form class="search" :class="{ open: searchOpen }" @submit.prevent>
-        <input
-          v-model="keyword"
-          type="search"
-          placeholder="搜索短剧"
-          @focus="searchOpen = true"
-          @blur="searchOpen = !!keyword"
-        />
-        <button type="button" class="search-btn" aria-label="搜索">
-          <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <div class="header-inner container">
+        <router-link class="logo" to="/">
+          <span class="logo-a">短</span><span class="logo-b">剧</span>
+        </router-link>
+        <form class="search" @submit.prevent>
+          <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
             <path
               fill="none"
               stroke="currentColor"
@@ -82,14 +74,14 @@ onMounted(async () => {
               d="M10.5 3a7.5 7.5 0 1 1 0 15 7.5 7.5 0 0 1 0-15zM16 16l5 5"
             />
           </svg>
-        </button>
-      </form>
+          <input v-model="keyword" type="search" placeholder="搜索短剧" />
+        </form>
+      </div>
     </header>
 
     <CategoryTabs v-model="active" :categories="allTabs" />
 
-    <main class="content">
-      <!-- 区块标题 + 排序 -->
+    <main class="content container">
       <div class="section-head">
         <h2 class="section-title">{{ keyword ? `搜索「${keyword}」` : `${activeName}短剧` }}</h2>
         <div class="sorts">
@@ -113,17 +105,17 @@ onMounted(async () => {
     </main>
 
     <footer class="footer">
-      <span class="logo small"><span class="logo-a">短</span><span class="logo-b">剧</span></span>
-      <span>© {{ new Date().getFullYear() }}</span>
+      <div class="container">© {{ new Date().getFullYear() }} 短剧</div>
     </footer>
   </div>
 </template>
 
 <style scoped>
 .home {
+  display: flex;
+  flex-direction: column;
   min-height: 100%;
   padding-top: var(--safe-top);
-  padding-bottom: var(--safe-bottom);
   background: var(--bg);
 }
 
@@ -132,20 +124,20 @@ onMounted(async () => {
   position: sticky;
   top: 0;
   z-index: 30;
+  background: #000;
+}
+.header-inner {
   display: flex;
   align-items: center;
-  gap: 12px;
-  height: 56px;
-  padding: 0 12px;
-  background: #000;
-  border-bottom: 1px solid var(--border);
+  gap: 14px;
+  height: 52px;
 }
 .logo {
   display: inline-flex;
   align-items: center;
-  font-size: 22px;
+  flex: 0 0 auto;
+  font-size: 20px;
   font-weight: 900;
-  letter-spacing: -0.5px;
   line-height: 1;
   white-space: nowrap;
 }
@@ -154,56 +146,50 @@ onMounted(async () => {
 }
 .logo-b {
   margin-left: 2px;
-  padding: 3px 6px;
-  border-radius: 5px;
+  padding: 3px 5px;
+  border-radius: var(--radius);
   background: var(--accent);
   color: var(--accent-fg);
 }
-.logo.small {
-  font-size: 16px;
-}
 .search {
+  position: relative;
   flex: 1;
-  display: flex;
-  align-items: center;
-  height: 36px;
-  max-width: 520px;
-  margin-left: auto;
-  border-radius: 4px;
-  background: var(--bg-2);
-  border: 1px solid var(--border);
-  overflow: hidden;
-  transition: border-color 0.15s;
+  max-width: 480px;
+  height: 34px;
 }
-.search.open {
-  border-color: var(--fg-3);
+.search-icon {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--fg-3);
+  pointer-events: none;
 }
 .search input {
-  flex: 1;
-  min-width: 0;
+  width: 100%;
   height: 100%;
-  padding: 0 12px;
-  border: 0;
-  background: transparent;
+  padding: 0 12px 0 32px;
+  border: 1px solid transparent;
+  border-radius: var(--radius);
+  background: var(--bg-2);
   color: var(--fg);
   font: inherit;
   outline: none;
+  transition: border-color 0.15s, background 0.15s;
+}
+.search input:focus {
+  background: var(--bg-3);
+  border-color: var(--fg-3);
 }
 .search input::placeholder {
   color: var(--fg-3);
 }
-.search-btn {
-  width: 44px;
-  height: 100%;
-  display: grid;
-  place-items: center;
-  background: var(--bg-3);
-  color: var(--fg);
-}
 
 /* ---------- 内容 ---------- */
 .content {
-  padding: 12px;
+  flex: 1;
+  padding-top: 16px;
+  padding-bottom: 32px;
 }
 .section-head {
   display: flex;
@@ -214,7 +200,7 @@ onMounted(async () => {
 }
 .section-title {
   margin: 0;
-  font-size: 18px;
+  font-size: 16px;
   font-weight: 700;
   white-space: nowrap;
   overflow: hidden;
@@ -222,26 +208,26 @@ onMounted(async () => {
 }
 .sorts {
   display: flex;
-  gap: 4px;
+  gap: 14px;
   flex: 0 0 auto;
+  font-size: 13px;
 }
 .sort {
-  padding: 5px 10px;
-  border-radius: 3px;
-  font-size: 13px;
   color: var(--fg-2);
-  background: var(--bg-2);
+  transition: color 0.15s;
+}
+.sort:hover {
+  color: var(--fg);
 }
 .sort[data-active='true'] {
-  color: var(--accent-fg);
-  background: var(--accent);
+  color: var(--fg);
   font-weight: 700;
 }
 
 .grid {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px 10px;
+  gap: 18px 10px;
   transition: opacity 0.15s;
 }
 .grid.dim {
@@ -250,23 +236,29 @@ onMounted(async () => {
 @media (min-width: 640px) {
   .grid {
     grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px 12px;
   }
 }
 @media (min-width: 960px) {
-  .header {
-    padding: 0 24px;
+  .header-inner {
+    height: 56px;
+    gap: 32px;
+  }
+  .logo {
+    font-size: 22px;
   }
   .content {
-    max-width: 1280px;
-    margin: 0 auto;
-    padding: 16px 24px;
+    padding-top: 20px;
+  }
+  .section-title {
+    font-size: 18px;
   }
   .grid {
     grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 20px 14px;
+    gap: 24px 14px;
   }
 }
-@media (min-width: 1400px) {
+@media (min-width: 1280px) {
   .grid {
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
@@ -279,11 +271,7 @@ onMounted(async () => {
 }
 
 .footer {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 12px;
-  padding: 28px 12px calc(28px + var(--safe-bottom));
+  padding: 20px 0 calc(20px + var(--safe-bottom));
   border-top: 1px solid var(--border);
   color: var(--fg-3);
   font-size: 12px;

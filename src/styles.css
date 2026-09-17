@@ -7,8 +7,11 @@
   --fg-3: #6b6b6b;
   --accent: #ff9000;
   --accent-fg: #000;
-  --border: #303030;
+  --border: #2c2c2c;
   --radius: 4px;
+  /* 所有区块共用的水平内边距与最大宽度，保证左边缘对齐 */
+  --gutter: 12px;
+  --container: 1280px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   color-scheme: dark;
@@ -54,4 +57,18 @@ img {
 
 ::-webkit-scrollbar {
   display: none;
+}
+
+.container {
+  width: 100%;
+  max-width: var(--container);
+  margin: 0 auto;
+  padding-left: var(--gutter);
+  padding-right: var(--gutter);
+}
+
+@media (min-width: 960px) {
+  :root {
+    --gutter: 24px;
+  }
 }
