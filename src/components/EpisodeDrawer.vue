@@ -98,7 +98,8 @@ const emit = defineEmits<{ select: [no: number]; close: [] }>()
 }
 .ep[data-active='true'] {
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-fg);
+  font-weight: 700;
 }
 .drawer-enter-active,
 .drawer-leave-active {

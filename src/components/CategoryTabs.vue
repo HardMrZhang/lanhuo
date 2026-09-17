@@ -14,7 +14,6 @@ function select(id: string) {
   emit('update:modelValue', id)
 }
 
-// 选中项滚到可视区中间
 watch(
   () => props.modelValue,
   async () => {
@@ -41,27 +40,44 @@ watch(
 </template>
 
 <style scoped>
+/* 顶栏下方的横向导航：深灰底、白字，选中项橙色下划线 */
 .tabs {
   display: flex;
-  gap: 6px;
-  padding: 8px 12px;
+  gap: 0;
+  padding: 0 8px;
   overflow-x: auto;
-  scroll-snap-type: x proximity;
   white-space: nowrap;
+  background: var(--bg-2);
+  border-bottom: 1px solid var(--border);
 }
 .tab {
   flex: 0 0 auto;
-  padding: 6px 14px;
-  border-radius: 999px;
-  background: var(--bg-2);
-  color: var(--fg-2);
+  position: relative;
+  padding: 12px 14px;
   font-size: 14px;
-  scroll-snap-align: center;
-  transition: background 0.15s, color 0.15s;
+  font-weight: 700;
+  color: var(--fg);
+  text-transform: uppercase;
+  transition: color 0.15s;
+}
+.tab::after {
+  content: '';
+  position: absolute;
+  left: 14px;
+  right: 14px;
+  bottom: 0;
+  height: 3px;
+  background: var(--accent);
+  transform: scaleX(0);
+  transition: transform 0.15s;
+}
+.tab:hover {
+  color: var(--accent);
 }
 .tab[data-active='true'] {
-  background: var(--accent);
-  color: #fff;
-  font-weight: 600;
+  color: var(--accent);
+}
+.tab[data-active='true']::after {
+  transform: scaleX(1);
 }
 </style>

@@ -11,12 +11,15 @@
     {
       "id": "demo-hls",
       "title": "示例 · HLS 自适应流",
-      "cover": "https://picsum.photos/seed/duanju-1/300/400",
+      "cover": "https://picsum.photos/seed/duanju-1/640/360",
       "description": "演示 .m3u8 多码率自适应播放。把 episodes 里的 src 换成你自己的 /media/xxx/index.m3u8 即可。",
       "categoryIds": ["urban", "comeback"],
       "tags": ["示例", "HLS"],
       "status": "completed",
-      "views": 128000,
+      "hd": true,
+      "views": 1280000,
+      "rating": 92,
+      "publishedAt": "2026-09-10T00:00:00Z",
       "episodes": [
         { "no": 1, "title": "第1集 · 自适应码率", "src": "https://test-streams.mux.dev/x36xhzz/x36xhzz.m3u8" },
         { "no": 2, "title": "第2集 · 单码率", "src": "https://test-streams.mux.dev/x36xhzz/url_0/193039199_mp4_h264_aac_hd_7.m3u8" }
@@ -25,12 +28,14 @@
     {
       "id": "demo-mp4",
       "title": "示例 · MP4 直链",
-      "cover": "https://picsum.photos/seed/duanju-2/300/400",
+      "cover": "https://picsum.photos/seed/duanju-2/640/360",
       "description": "演示普通 mp4 播放（支持 Range 拖动）。本地文件放到 media/ 目录后用 /media/文件名.mp4 引用。",
       "categoryIds": ["romance"],
       "tags": ["示例", "MP4"],
       "status": "ongoing",
-      "views": 5600,
+      "views": 56000,
+      "rating": 87,
+      "publishedAt": "2026-09-15T00:00:00Z",
       "episodes": [
         { "no": 1, "src": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4" },
         { "no": 2, "src": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4" },
@@ -40,14 +45,34 @@
     {
       "id": "demo-local",
       "title": "示例 · 本地媒体目录",
-      "cover": "https://picsum.photos/seed/duanju-3/300/400",
+      "cover": "https://picsum.photos/seed/duanju-3/640/360",
       "description": "把视频放到 media/demo-local/ 下，运行 npm run hls 转成 HLS 后即可播放。此条目在你放入文件前会播放失败。",
       "categoryIds": ["costume", "suspense"],
       "tags": ["示例", "本地"],
       "status": "completed",
+      "hd": true,
+      "views": 3200,
+      "rating": 78,
+      "publishedAt": "2026-09-01T00:00:00Z",
       "episodes": [
         "/media/demo-local/ep01/index.m3u8",
         "/media/demo-local/ep02/index.m3u8"
+      ]
+    },
+    {
+      "id": "demo-anime",
+      "title": "示例 · 漫剧分类占位",
+      "cover": "https://picsum.photos/seed/duanju-4/640/360",
+      "description": "用于演示分类切换与排序，内容与 MP4 示例相同。",
+      "categoryIds": ["anime", "romance"],
+      "tags": ["示例", "漫剧"],
+      "status": "ongoing",
+      "views": 410000,
+      "rating": 95,
+      "publishedAt": "2026-09-16T00:00:00Z",
+      "episodes": [
+        { "no": 1, "src": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyrides.mp4" },
+        { "no": 2, "src": "https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4" }
       ]
     }
   ]

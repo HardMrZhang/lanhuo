@@ -292,7 +292,7 @@ onBeforeUnmount(() => io?.disconnect())
 .bar i {
   display: block;
   height: 100%;
-  background: #fff;
+  background: var(--accent);
   transition: width 0.25s linear;
 }
 .spinner {
@@ -321,11 +321,11 @@ onBeforeUnmount(() => io?.disconnect())
   top: 50%;
   transform: translate(-50%, -50%);
   padding: 12px 28px;
-  border-radius: 999px;
+  border-radius: 4px;
   background: var(--accent);
-  color: #fff;
+  color: var(--accent-fg);
   font-size: 16px;
-  font-weight: 600;
+  font-weight: 700;
 }
 .error {
   position: absolute;

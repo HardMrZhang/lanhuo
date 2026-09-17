@@ -23,6 +23,12 @@ export interface Drama {
   /** 完结 / 更新中 */
   status: 'completed' | 'ongoing'
   views?: number
+  /** 好评率 0-100 */
+  rating?: number
+  /** 是否高清标识 */
+  hd?: boolean
+  /** 上架时间 ISO 字符串，用于「最新」排序 */
+  publishedAt?: string
   episodes: Episode[]
 }
 

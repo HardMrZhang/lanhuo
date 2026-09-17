@@ -1,10 +1,14 @@
 :root {
-  --bg: #0f0f10;
-  --bg-2: #18181b;
-  --fg: #f4f4f5;
-  --fg-2: #a1a1aa;
-  --accent: #ff4d6d;
-  --radius: 10px;
+  --bg: #000;
+  --bg-2: #1b1b1b;
+  --bg-3: #2a2a2a;
+  --fg: #fff;
+  --fg-2: #969696;
+  --fg-3: #6b6b6b;
+  --accent: #ff9000;
+  --accent-fg: #000;
+  --border: #303030;
+  --radius: 4px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   color-scheme: dark;
@@ -23,7 +27,7 @@ body,
   background: var(--bg);
   color: var(--fg);
   font-family:
-    -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei',
+    Arial, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei',
     sans-serif;
   font-size: 14px;
   line-height: 1.4;

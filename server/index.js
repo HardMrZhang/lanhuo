@@ -36,8 +36,14 @@ app.get('/api/categories', (_req, res) => {
   res.json(db.categories)
 })
 
+const sorters = {
+  hot: (a, b) => (b.views ?? 0) - (a.views ?? 0),
+  new: (a, b) => new Date(b.publishedAt ?? 0) - new Date(a.publishedAt ?? 0),
+  rating: (a, b) => (b.rating ?? 0) - (a.rating ?? 0),
+}
+
 app.get('/api/dramas', (req, res) => {
-  const { category, q } = req.query
+  const { category, q, sort } = req.query
   let list = db.dramas
   if (typeof category === 'string' && category) {
     list = list.filter((d) => d.categoryIds.includes(category))
@@ -50,6 +56,9 @@ app.get('/api/dramas', (req, res) => {
         d.description.toLowerCase().includes(kw) ||
         (d.tags ?? []).some((t) => t.toLowerCase().includes(kw)),
     )
+  }
+  if (typeof sort === 'string' && sorters[sort]) {
+    list = [...list].sort(sorters[sort])
   }
   res.set('Cache-Control', 'public, max-age=30')
   res.json(list.map(toSummary))

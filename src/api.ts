@@ -8,10 +8,11 @@ async function get<T>(url: string): Promise<T> {
 
 export const api = {
   categories: () => get<Category[]>('/api/categories'),
-  dramas: (params: { category?: string; q?: string } = {}) => {
+  dramas: (params: { category?: string; q?: string; sort?: string } = {}) => {
     const qs = new URLSearchParams()
     if (params.category && params.category !== 'all') qs.set('category', params.category)
     if (params.q) qs.set('q', params.q)
+    if (params.sort) qs.set('sort', params.sort)
     const suffix = qs.toString() ? `?${qs}` : ''
     return get<DramaSummary[]>(`/api/dramas${suffix}`)
   },
