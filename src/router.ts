@@ -5,6 +5,12 @@ export const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: () => import('./views/Home.vue') },
     {
+      path: '/drama/:id',
+      name: 'detail',
+      component: () => import('./views/Detail.vue'),
+      props: (route) => ({ id: String(route.params.id) }),
+    },
+    {
       path: '/play/:id/:ep?',
       name: 'play',
       component: () => import('./views/Player.vue'),

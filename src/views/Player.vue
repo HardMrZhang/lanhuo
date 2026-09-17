@@ -10,6 +10,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { api } from '../api'
 import type { Drama } from '../types'
+import { history } from '../storage'
 import VideoPlayer from '../components/VideoPlayer.vue'
 import EpisodeDrawer from '../components/EpisodeDrawer.vue'
 
@@ -41,6 +42,7 @@ onMounted(async () => {
     drama.value = await api.drama(props.id)
     if (!episodes.value.length) throw new Error('该剧暂无剧集')
     current.value = Math.min(Math.max(1, props.ep), total.value)
+    history.set(props.id, current.value)
     await nextTick()
     scrollTo(current.value, 'auto')
     setupObserver()
@@ -83,10 +85,11 @@ function go(no: number) {
   nextTick(() => scrollTo(no))
 }
 
-// 当前集变化：同步 URL、预取下一集
+// 当前集变化：同步 URL、记录观看历史、预取下一集
 watch(current, (no) => {
   progress.value = 0
   router.replace({ name: 'play', params: { id: props.id, ep: no } })
+  history.set(props.id, no)
   prefetchNext(no)
   nextTick(observeAll)
 })
@@ -123,7 +126,7 @@ function resumeWithGesture() {
 
 function back() {
   if (window.history.length > 1) router.back()
-  else router.push({ name: 'home' })
+  else router.push({ name: 'detail', params: { id: props.id } })
 }
 
 onBeforeUnmount(() => io?.disconnect())

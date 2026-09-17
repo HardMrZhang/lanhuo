@@ -12,7 +12,7 @@ function formatViews(n?: number) {
 </script>
 
 <template>
-  <router-link class="card" :to="{ name: 'play', params: { id: drama.id, ep: 1 } }">
+  <router-link class="card" :to="{ name: 'detail', params: { id: drama.id } }">
     <div class="thumb">
       <img :src="drama.cover" :alt="drama.title" loading="lazy" decoding="async" />
       <span v-if="drama.hd" class="hd">HD</span>
