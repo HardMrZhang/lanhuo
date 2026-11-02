@@ -1,12 +1,8 @@
 <script setup lang="ts">
-/**
- * 单集播放器：
- * - .m3u8 走 hls.js（Safari 原生 HLS 直接用 <video>），.mp4 走原生。
- * - active=true 时才真正加载/播放；相邻集只保留 poster，避免同时拉多路流。
- * - 缓冲策略：前向缓冲 30s、保留后向 10s，起播用较低码率快速首帧再自动升档。
- */
+/** Load only the active episode; adjacent slides retain their poster. */
 import Hls from 'hls.js'
-import { onBeforeUnmount, ref, watch } from 'vue'
+import { onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { tr } from '../i18n'
 
 const props = defineProps<{
   src: string
@@ -18,28 +14,58 @@ const emit = defineEmits<{
   ended: []
   progress: [current: number, duration: number]
   waiting: [is: boolean]
+  ready: []
+  error: [message: string]
   'need-gesture': []
 }>()
 
 const video = ref<HTMLVideoElement | null>(null)
 const paused = ref(false)
+const failed = ref(false)
+let mounted = false
 let hls: Hls | null = null
+let hlsReady = false
 let attachedSrc = ''
+let sourceGeneration = 0
 
-const isHls = (u: string) => /\.m3u8(\?|$)/i.test(u)
-const nativeHls = () => {
-  const v = document.createElement('video')
-  return v.canPlayType('application/vnd.apple.mpegurl') !== ''
+const isHls = (url: string) => /\.m3u8(\?|$)/i.test(url)
+
+function fail(message: string) {
+  if (!props.active || failed.value) return
+  failed.value = true
+  paused.value = true
+  video.value?.pause()
+  hls?.stopLoad()
+  emit('waiting', false)
+  emit('error', message)
 }
 
-function attach() {
-  const v = video.value
-  if (!v || attachedSrc === props.src) return
+function attach(force = false) {
+  const element = video.value
+  if (
+    !element ||
+    !props.active ||
+    (!force && attachedSrc && attachedSrc === props.src)
+  )
+    return
   detach()
   attachedSrc = props.src
+  failed.value = false
+  emit('waiting', true)
 
-  if (isHls(props.src) && !nativeHls() && Hls.isSupported()) {
-    hls = new Hls({
+  if (!props.src) {
+    fail('该集暂无可用视频地址，请稍后重试。')
+    return
+  }
+  if (
+    isHls(props.src) &&
+    !element.canPlayType('application/vnd.apple.mpegurl')
+  ) {
+    if (!Hls.isSupported()) {
+      fail('当前浏览器无法播放此格式的视频。')
+      return
+    }
+    const instance = new Hls({
       maxBufferLength: 30,
       maxMaxBufferLength: 60,
       backBufferLength: 10,
@@ -50,93 +76,142 @@ function attach() {
       fragLoadingMaxRetry: 4,
       manifestLoadingMaxRetry: 3,
     })
-    hls.on(Hls.Events.ERROR, (_e, data) => {
-      if (!data.fatal || !hls) return
-      if (data.type === Hls.ErrorTypes.NETWORK_ERROR) hls.startLoad()
-      else if (data.type === Hls.ErrorTypes.MEDIA_ERROR) hls.recoverMediaError()
-      else {
-        detach()
-        attach()
-      }
+    hls = instance
+    instance.on(Hls.Events.MANIFEST_PARSED, () => {
+      if (hls !== instance || !props.active) return
+      hlsReady = true
+      void play()
     })
-    hls.loadSource(props.src)
-    hls.attachMedia(v)
+    instance.on(Hls.Events.ERROR, (_event, data) => {
+      if (!data.fatal || hls !== instance || !props.active) return
+      fail(
+        data.type === Hls.ErrorTypes.NETWORK_ERROR
+          ? '视频加载失败，请检查网络后重试。'
+          : '视频暂时无法播放，请重试或选择其他集数。',
+      )
+    })
+    instance.loadSource(props.src)
+    instance.attachMedia(element)
   } else {
-    v.src = props.src
-    v.load()
+    element.src = props.src
+    element.load()
   }
 }
 
 function detach() {
-  if (hls) {
-    hls.destroy()
-    hls = null
-  }
-  const v = video.value
-  if (v) {
-    v.pause()
-    v.removeAttribute('src')
-    v.load()
-  }
+  sourceGeneration++
   attachedSrc = ''
+  failed.value = false
+  hls?.destroy()
+  hls = null
+  hlsReady = false
+  const element = video.value
+  if (element) {
+    element.pause()
+    element.removeAttribute('src')
+    element.load()
+  }
 }
 
 async function play() {
-  const v = video.value
-  if (!v) return
+  const element = video.value
+  if (
+    !element ||
+    !props.active ||
+    failed.value ||
+    !attachedSrc ||
+    (hls && !hlsReady)
+  )
+    return
+  const generation = sourceGeneration
+  element.muted = props.muted
   try {
-    await v.play()
-    paused.value = false
-  } catch {
-    // 自动播放被拦截：需要用户手势
-    paused.value = true
-    emit('need-gesture')
+    await element.play()
+    if (generation === sourceGeneration && props.active) paused.value = false
+  } catch (cause) {
+    if (generation !== sourceGeneration || !props.active) return
+    const name = cause instanceof Error ? cause.name : ''
+    if (name === 'AbortError') return
+    if (name === 'NotAllowedError') {
+      paused.value = true
+      emit('waiting', false)
+      emit('need-gesture')
+    } else {
+      fail('视频暂时无法播放，请重试或选择其他集数。')
+    }
   }
 }
 
 function pause() {
   video.value?.pause()
   paused.value = true
+  if (props.active) emit('waiting', false)
 }
-
 function toggle() {
-  if (video.value?.paused) play()
+  if (!props.active || failed.value) return
+  if (video.value?.paused) void play()
   else pause()
 }
-
-function seek(sec: number) {
-  if (video.value) video.value.currentTime = sec
+function seek(seconds: number) {
+  if (video.value) video.value.currentTime = seconds
 }
-
+function retry() {
+  if (!props.active) return
+  attach(true)
+  void play()
+}
+function syncActive() {
+  if (!mounted) return
+  if (props.active) {
+    attach()
+    void play()
+  } else {
+    detach()
+  }
+}
 function onTime() {
-  const v = video.value
-  if (v) emit('progress', v.currentTime, v.duration || 0)
+  const element = video.value
+  if (element && props.active)
+    emit('progress', element.currentTime, element.duration || 0)
+}
+function onPlaying() {
+  if (!props.active || !attachedSrc) return
+  paused.value = false
+  failed.value = false
+  emit('waiting', false)
+  emit('ready')
+}
+function onMediaError() {
+  const mediaError = video.value?.error
+  if (!props.active || !attachedSrc || !mediaError) return
+  const message =
+    mediaError.code === 2
+      ? '视频加载失败，请检查网络后重试。'
+      : mediaError.code === 4
+        ? '视频源不可用或格式不受支持，请重试或选择其他集数。'
+        : '视频暂时无法播放，请重试或选择其他集数。'
+  fail(message)
 }
 
-watch(
-  () => [props.active, props.src] as const,
-  ([active]) => {
-    if (active) {
-      attach()
-      play()
-    } else {
-      detach()
-    }
-  },
-  { immediate: true, flush: 'post' },
-)
-
+// The template ref is available on mount. The watcher handles later changes only.
+onMounted(() => {
+  mounted = true
+  syncActive()
+})
+watch(() => [props.active, props.src] as const, syncActive, { flush: 'post' })
 watch(
   () => props.muted,
-  (m) => {
-    if (video.value) video.value.muted = m
+  (muted) => {
+    if (video.value) video.value.muted = muted
   },
-  { immediate: true, flush: 'post' },
+  { flush: 'post' },
 )
+onBeforeUnmount(() => {
+  mounted = false
+  detach()
+})
 
-onBeforeUnmount(detach)
-
-defineExpose({ play, pause, toggle, seek })
+defineExpose({ play, pause, toggle, seek, retry })
 </script>
 
 <template>
@@ -144,19 +219,21 @@ defineExpose({ play, pause, toggle, seek })
     <video
       ref="video"
       class="video"
+      :aria-label="tr('剧集视频', 'Episode video')"
       :poster="poster"
       :muted="muted"
       playsinline
       webkit-playsinline
       x5-video-player-type="h5"
       preload="auto"
-      @ended="emit('ended')"
+      @ended="active && emit('ended')"
       @timeupdate="onTime"
-      @waiting="emit('waiting', true)"
-      @playing="emit('waiting', false); paused = false"
+      @waiting="active && !failed && emit('waiting', true)"
+      @playing="onPlaying"
       @pause="paused = true"
+      @error="onMediaError"
     />
-    <div v-if="paused && active" class="play-icon">▶</div>
+    <div v-if="paused && active && !failed" class="play-icon" aria-hidden="true">▶</div>
   </div>
 </template>
 

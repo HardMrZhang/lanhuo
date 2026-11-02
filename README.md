@@ -2,7 +2,15 @@
 
 移动端短剧 H5：分类浏览 + 竖屏沉浸播放（上下滑切集），Vue 3 + Vite + hls.js，Node/Express 提供数据与媒体托管。
 
+## 页面与演示内容
+
+首页采用深色剧场布局：1220px 居中内容区、推荐轮播、9:16 竖版剧集卡片和分类分区。详情页包含剧集介绍、分类信息、好评率、收藏分享、20 集分组选集；支持搜索、排序、分页与本地观看记录。
+
+当前剧集来自本地 downloads 中已筛选的作品，按“成人短剧”和“成人漫剧”归入对应栏目。详情介绍、标签、日期等从各作品的 `metadata.json` 提取；视频使用本地完整 MP4，没有完整视频的作品仍保留介绍并显示“待更新”。封面优先使用从本地视频中选定的非露骨静帧，缺少合适画面时使用统一的风景设计海报。设计海报带有“剧场海报”标识，并非作品原始封面；图片内嵌在 SVG 中，无需请求外部图片。封面来源记录在 `data/local-cover-sources.json`，风景素材来源见 `public/posters/sources.json`。之前的演示目录保存在 `data/backups/`。
+
 ## 快速开始
+
+需要 Node.js 22.13 或更新版本（会员数据使用 Node 内置 SQLite）。
 
 ```bash
 npm install
@@ -16,11 +24,96 @@ npm run build      # 产出 dist/
 npm start          # 后端同时托管 dist/ ，访问 http://localhost:3001
 ```
 
+## VIP 会员与加密货币充值
+
+访问 `/vip` 或点击导航中的 VIP 入口。先注册邮箱账号并登录，再选择月卡（30 天 / 10 U）、半年卡（180 天 / 20 U）或年卡（365 天 / 20 U），使用 USDT 在 TRON（TRC20）网络转账支付。U 指 USDT；页面显示由 NOWPayments 生成的订单收款地址及准确应付数量，转账网络手续费由付款方另付，实际到账需达到套餐金额。套餐均为一次性购买，不自动续费，续费天数从当前有效期末尾累加；已经过期则从确认付款时间开始计算。
+
+会员页面显示会员有效期、充值记录和订单状态。只有服务端验证支付通知、订单归属、金额及币种后才开通会员；仅返回成功页面不会开通。链上确认期间可以回到会员中心查询。少付、失败或需核对的订单不会自动开通，用户应保留订单号和交易哈希联系站点运营者核对。
+
+### 配置收款
+
+1. 复制 `.env.example` 为 `.env`，在 NOWPayments 商户后台创建 API Key、配置 IPN Secret，分别填写 `NOWPAYMENTS_API_KEY`、`NOWPAYMENTS_IPN_SECRET`。密钥仅放在服务端。不启用 NOWPayments 时留空即可。
+2. 设置 `APP_URL` 为网站的公网 HTTPS 地址，例如 `https://drama.example.com`。NOWPayments 每笔支付自动指定通知地址 `${APP_URL}/api/payments/nowpayments/ipn`，需允许支付平台访问该 POST 接口。商户需开通 USDT TRC20 收款，并确保平台最低支付金额支持 10 USDT。反向代理将 `/api` 转发到 Node 服务，网站与 API 使用同一来源。
+3. VaeHub 通道（法币代收，与 NOWPayments 的 USDT 错开）：找商务获取接口地址（`VAEHUB_API_BASE`，如 `https://xxxx.top/api`）、`VAEHUB_APP_KEY` 与 `VAEHUB_APP_SECRET`，按 `.env.example` 填写 `VAEHUB_COUNTRY`（ISO3 国家码，代收必填）、`VAEHUB_CURRENCY`（默认 USD）与可选的 `VAEHUB_PAYCODE`，并配置 `VAEHUB_USDT_RATES_JSON`（如 `{"USD":1}`，即 1 USDT 兑换多少法币，实收金额按此换算、小数点后两位向上取整）。回调地址为 `${APP_URL}/api/payments/vaehub/notify`（VaeHub 全局只配一个回调地址，建单时自动带上该地址；也可在“集成配置”后台手动配置），平台会以 `Authorization: Bearer …` 签名token 推送 `payin_notify`，本站验签通过后返回纯文本 `SUCCESS`。`VAEHUB_RETURN_TYPE=cashier` 返回收银台跳转链接，`qrcode` 返回付款二维码串。下单时用户在 NOWPayments（USDT）与 VaeHub（法币）之间二选一。
+4. 执行 `npm run dev` 或构建后 `npm start`；启动命令自动加载 `.env`。没有完整支付配置时仍可注册登录和查看套餐，付款按钮保持不可用。
+4. 可使用独立沙箱账号/密钥与 `NOWPAYMENTS_SANDBOX=true` 辅助调试，但 NOWPayments 已声明沙箱自 2025 年起不再持续维护，与正式环境可能不同。上线前必须使用正式账号完成小额真实支付与通知验收。测试通知同样需要能从外网访问的回调地址。
+
+订单金额与会员天数由服务端生成，客户端不能修改。修改 `VIP_PLANS_JSON` 可调整未来订单套餐（字段 `id/name/days/price/currency/recommended`，示例见 `.env.example`），已创建订单保留购买时的价格和天数。重复提交使用幂等键，网络结果不明的订单保留供运营者核对，不盲目重复创建收款订单。
+
+### 数据与运行
+
+会员账号、密码哈希、会话、订单和会员到期时间保存在 `data/vip.sqlite`，可用 `VIP_DB_FILE` 指定持久化卷位置。SQLite 使用事务保证同一订单只增加一次会员天数。请保留该数据库，使用 SQLite 备份工具，或停服后连同 `-wal` / `-shm` 文件一起备份；不可在部署时删除。当前部署使用单个 Node 实例，限流在进程内实现。
+
+登录使用 HttpOnly Cookie，生产环境要求 HTTPS。邮箱用于登录标识，当前没有邮箱验证或找回密码流程。会员模块记录充值权益与有效期。付费规则为每部剧第 1 集免费、第 2 集起需要有效会员：`/api/dramas/:id` 对非会员不下发付费集播放地址，`/media` 下对应的付费集文件也会返回 403，因此直接分享地址无法绕过。退款/异常支付需运营者核对，系统不会自动撤销已经发放的会员天数。
+
+```bash
+npm test           # 导入回归测试 + 会员/支付安全与幂等测试
+npm run build      # TypeScript 检查与生产构建
+```
+
+## 中英文界面
+
+点击页头的 `EN` / `中文` 切换界面语言，播放器中也提供切换入口。选择会保存在当前浏览器，刷新或跳转页面后保留；切换语言不重置登录、搜索、播放或充值订单状态。导航、账号、会员充值、详情和播放操作均支持英文。剧名、简介、标签及封面内文字保留原始内容，不自动翻译视频或字幕。
+
 ## 添加你的剧集
+
+### 下载已授权的 MP4
+
+从版权方提供的官方 API 或交付系统取得 MP4 HTTPS 直链/签名链接后，可按剧名和集数批量下载。脚本仅处理 MP4 文件，不登录网站、不解析网页播放器、不读取浏览器 Cookie，也不处理 DRM 或 HLS。它会检查 MP4 文件头，每集默认上限 20 GiB；已存在的目标文件不会覆盖。任务中断后加 `--skip-existing` 可跳过成功下载的文件继续。
+
+```json
+{
+  "version": 1,
+  "items": [
+    { "title": "示例剧名", "episode": 1, "url": "https://media.example/episode-01.mp4?signature=授权方签发的临时签名" },
+    { "title": "示例剧名", "episode": 2, "url": "https://media.example/episode-02.mp4?signature=授权方签发的临时签名" }
+  ]
+}
+```
+
+将清单保存为 `authorized-media.json`，并按本次内容选择一个栏目目录运行。例如，成人短剧可保存到 `downloads/成人短剧/<作品名>/`：
+
+```bash
+npm run download:authorized -- ./authorized-media.json ./downloads/成人短剧
+# 断点续跑，跳过已经成功下载的文件
+npm run download:authorized -- ./authorized-media.json ./downloads/成人短剧 --skip-existing
+```
+
+下载后会生成 `downloads/成人短剧/<作品名>/第01集.mp4`。在该目录补上版权方提供的 `metadata.json`，然后以 `downloads/` 作为来源运行现有的 `npm run import:manifest` 与 `npm run import:downloads`。成人漫剧请将输出目录改为 `downloads/成人漫剧`。签名链接通常会过期，请从授权方重新取得；不要将签名链接提交到 Git。
+
+### 导入本地下载目录
+
+目录格式为 `downloads/栏目名/作品名/metadata.json`，视频文件名为 `第01集.mp4`、`第02集.mp4` 等。清单 `data/local-import-manifest.json` 记录本次筛选结果及元数据摘要，只有标记为 `include` 且摘要未变的作品会导入。变更介绍或增加作品后应先更新筛选清单。
+
+```bash
+# 预览导入数量，不修改文件；需要 ffprobe（随 ffmpeg 安装）
+npm run import:downloads -- /Users/zhangchaoyin/zhangzhaoyin/go_items/go_test/downloads
+# 写入数据和视频链接，保留目录中其他手工添加的剧集
+npm run import:downloads -- /Users/zhangchaoyin/zhangzhaoyin/go_items/go_test/downloads --apply
+```
+
+上面的 npm 命令在 `duanju-h5` 项目目录运行。如果把脚本复制到了 `go_test/`，可以在 `go_test` 下指定目标网站项目：
+
+```bash
+node import-downloads.mjs ./downloads \
+  --project /Users/zhangchaoyin/zhangzhaoyin/node_project/duanju-h5 \
+  --apply
+```
+
+`./downloads` 相对于当前终端目录；`--project` 决定从哪里读取导入清单、把剧集和媒体链接写到哪里。无需复制网站项目的数据文件到下载目录。运行 `node import-downloads.mjs --help` 可查看参数。
+
+脚本只连接通过检查的完整 MP4，不使用 metadata 中指向网页的集数地址，不导入分片文件。没有完整 MP4 的作品保留在目录中，不生成虚假的选集链接。`public/posters/imported/<id>.jpg` 中已选定的图片会在再次导入时保留。
+
+`media/imported/` 为指向原视频的符号链接，原下载目录需要保留；部署到其他机器时需同时迁移媒体，或在该机器重新运行导入。每次目录变化前自动备份，结果、待补视频和跳过原因见 `data/local-import-report.json`。`--replace-catalog` 可在已确认需要替换整个剧集目录时使用。
+
+更新封面后运行 `npm run covers:sync -- --apply`，可将已记录来源的本地 JPG 同步到剧集资料，并给缺图条目生成设计海报；不加 `--apply` 仅预览。导入脚本使用相同模板，已选定 JPG 不会被替换。新版设计海报使用 `.designed-v1.svg` 文件名，避免浏览器长期缓存旧占位图。列表、轮播和详情页统一使用图片加载失败兜底。
+
+### 手工添加
 
 1. 编辑 `data/dramas.json`（保存即热重载，不用重启）：
    - `categories`：分类列表
    - `dramas[]`：每部剧的 `id / title / cover / description / categoryIds / tags / status / episodes`
+   - `channelId`：导入作品填写 `shorts` 或 `anime`，确保只显示在对应栏目
    - `episodes[].src` 支持 `.m3u8`（推荐）或 `.mp4`，可以是本地 `/media/...` 或任意外链
 2. 本地视频放到 `media/` 目录，用 `/media/相对路径` 引用。
 3. 把 mp4 转成多码率 HLS（弱网不卡的关键）：
@@ -29,6 +122,12 @@ npm start          # 后端同时托管 dist/ ，访问 http://localhost:3001
 npm run hls -- 输入.mp4 media/剧id/ep01
 # 然后 src 填 /media/剧id/ep01/index.m3u8
 ```
+
+### HLS 上传到 S3
+
+1. 复制 `.env.example` 为 `.env`，填写 `S3_BUCKET / AWS_REGION / S3_PREFIX`（脚本自动加载 `.env`，命令行显式传参优先）。
+2. `aws configure` 配好 Access Key（密钥只放 `~/.aws/credentials`，不进项目）。
+3. 转码并上传：`bash scripts/batch-hls-upload-s3.sh`；把 `data/dramas.json` 的 src 批量指向 S3：`node scripts/point-dramas-to-s3.mjs --apply`。
 
 ## 流畅播放做了什么
 
@@ -56,5 +155,23 @@ src/                 Vue 前端
 | `PORT` | 3001 | 后端端口 |
 | `MEDIA_DIR` | `./media` | 媒体目录 |
 | `DATA_FILE` | `./data/dramas.json` | 数据文件 |
+| `APP_URL` | 无 | 网站公网 HTTPS 地址，生成支付通知地址 |
+| `NOWPAYMENTS_API_KEY` | 无 | NOWPayments 服务端 API Key |
+| `NOWPAYMENTS_IPN_SECRET` | 无 | 支付通知签名密钥 |
+| `NOWPAYMENTS_SANDBOX` | false | 使用独立沙箱 API 与沙箱密钥 |
+| `VAEHUB_API_BASE` | 无 | VaeHub 接口地址（如 `https://xxxx.top/api`） |
+| `VAEHUB_APP_TAG` | project | VaeHub 应用标识，固定为 `project` |
+| `VAEHUB_APP_KEY` | 无 | VaeHub 服务端 App Key |
+| `VAEHUB_APP_SECRET` | 无 | VaeHub 服务端 App Secret |
+| `VAEHUB_CURRENCY` | USD | VaeHub 代收法币币种 |
+| `VAEHUB_COUNTRY` | 无 | VaeHub 代收国家（ISO3），必填 |
+| `VAEHUB_USDT_RATES_JSON` | 无 | VaeHub 法币汇率（如 `{"USD":1}`），缺失则该通道不可用 |
+| `VAEHUB_PAYCODE` | 无 | VaeHub 银行代码，不填则自动选择支付方式 |
+| `VAEHUB_RETURN_TYPE` | cashier | `cashier`=收银台链接，`qrcode`=付款二维码串 |
+| `S3_BUCKET` | `duanju-h5-hls-473041657070` | HLS 上传目标桶（上传与指链脚本共用，自动读 `.env`） |
+| `AWS_REGION` | `ap-northeast-1` | S3 区域 |
+| `S3_PREFIX` | `hls` | S3 前缀目录 |
+| `VIP_DB_FILE` | `./data/vip.sqlite` | 会员与订单 SQLite 数据库 |
+| `VIP_PLANS_JSON` | 10 / 20 / 20 U | 自定义套餐 JSON 数组，见 `.env.example` |
 
 请只上架你拥有版权或已获授权的内容。

@@ -1,10 +1,13 @@
 import express from 'express'
 import compression from 'compression'
-import cors from 'cors'
 import path from 'node:path'
 import fs from 'node:fs'
 import { fileURLToPath } from 'node:url'
 import { loadData, watchData } from './data.js'
+import { createDramaPool, loadDramasFromMysql } from './dramas-db.js'
+import { createVipRouter } from './vip.js'
+import { createS3HlsHandler } from './s3hls.js'
+import { FREE_EPISODES, isEpisodeLocked, lockedMediaPaths } from './access.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
@@ -15,13 +18,45 @@ const isProd = process.env.NODE_ENV === 'production'
 
 const app = express()
 app.disable('x-powered-by')
-app.use(cors())
 app.use(compression({ filter: (req, res) => !/\.(ts|m4s|mp4)$/.test(req.path) && compression.filter(req, res) }))
+const vip = await createVipRouter()
+app.use('/api', vip)
 
 // ---------- 数据 ----------
+// 短剧库主存 MySQL（categories/dramas/episodes/drama_categories）。
+// data/dramas.json 仅作开发期兜底：MySQL 不可用或为空时回退，保证本地照常跑。
 let db = loadData()
+let lockedMedia = lockedMediaPaths(db.dramas)
+const dramaPool = createDramaPool()
+try {
+  const fromMysql = await loadDramasFromMysql(dramaPool)
+  if (fromMysql.dramas.length) {
+    db = fromMysql
+    lockedMedia = lockedMediaPaths(db.dramas)
+    console.log(`[data] loaded from MySQL: ${db.dramas.length} dramas, ${db.categories.length} categories`)
+  } else {
+    console.log('[data] MySQL empty, fallback to data/dramas.json')
+  }
+  // 数据库写入（如后台脚本导剧）后无需重启：每 15s 刷新一次。
+  setInterval(async () => {
+    try {
+      const next = await loadDramasFromMysql(dramaPool)
+      if (!next.dramas.length) return
+      db = next
+      lockedMedia = lockedMediaPaths(db.dramas)
+    } catch (e) {
+      console.error('[data] mysql refresh failed:', e.message)
+    }
+  }, 15_000).unref?.()
+} catch (e) {
+  console.error('[data] MySQL unavailable, fallback to data/dramas.json:', e.message)
+}
+// 第 2 集起的媒体文件只有有效会员可取，防止绕过前端直接拉取地址（上面已初始化）。
+// JSON 兜底模式下文件变更热重载（开发期改 JSON 不用重启）。
 watchData(() => {
+  if (db.dramas.length) return
   db = loadData()
+  lockedMedia = lockedMediaPaths(db.dramas)
   console.log('[data] reloaded')
 })
 
@@ -30,10 +65,27 @@ const toSummary = (d) => {
   return { ...rest, episodeCount: episodes.length }
 }
 
+/** 未开通会员时不下发付费集的播放地址。 */
+const toDetail = (d, isVip) => {
+  if (isVip) return d
+  return {
+    ...d,
+    episodes: d.episodes.map((episode) =>
+      isEpisodeLocked(episode.no) ? { ...episode, src: '' } : episode,
+    ),
+  }
+}
+
+
 // ---------- API ----------
 app.get('/api/categories', (_req, res) => {
   res.set('Cache-Control', 'public, max-age=60')
   res.json(db.categories)
+})
+
+app.get('/api/config', (_req, res) => {
+  res.set('Cache-Control', 'public, max-age=60')
+  res.json({ freeEpisodes: FREE_EPISODES, paywallStartEpisode: FREE_EPISODES + 1 })
 })
 
 const sorters = {
@@ -64,22 +116,34 @@ app.get('/api/dramas', (req, res) => {
   res.json(list.map(toSummary))
 })
 
-app.get('/api/dramas/:id', (req, res) => {
-  const d = db.dramas.find((x) => x.id === req.params.id)
-  if (!d) return res.status(404).json({ error: 'not found' })
-  res.set('Cache-Control', 'public, max-age=30')
-  res.json(d)
+app.get('/api/dramas/:id', async (req, res, next) => {
+  try {
+    const d = db.dramas.find((x) => x.id === req.params.id)
+    if (!d) return res.status(404).json({ error: 'not found' })
+    // 该响应随登录状态变化，必须禁用共享缓存，否则会员身份会被缓存串用。
+    res.set('Cache-Control', 'private, no-store')
+    res.json(toDetail(d, await vip.isVip(req)))
+  } catch (error) { next(error) }
 })
+
+app.use('/api', (_req, res) => res.status(404).json({ error: '接口不存在' }))
+
+// ---------- S3 私有桶 HLS 中转 ----------
+// 组织 SCP 禁止公开桶策略，直链 S3 会 403；改走服务端 GetObject 中转，前端播 /s3-hls/...。
+// 付费集（第 2 集起）同样要求有效 VIP 会员，和 /media 策略一致。
+app.get('/s3-hls/:id/:ep/:file', createS3HlsHandler({ isEpisodeLocked, checkVip: (req) => vip.isVip(req) }))
 
 // ---------- 媒体文件 ----------
 // express.static 原生支持 Range 请求（拖动进度条、分段加载），HLS 分片设长缓存。
-app.use(
-  '/media',
+// 付费集不允许被 CDN 或共享缓存留存，因此按是否付费集分别设置缓存策略。
+const mediaStatic = (isPaid) =>
   express.static(MEDIA_DIR, {
     fallthrough: false,
     acceptRanges: true,
     setHeaders(res, filePath) {
-      if (filePath.endsWith('.m3u8')) {
+      if (isPaid) {
+        res.set('Cache-Control', 'private, no-store')
+      } else if (filePath.endsWith('.m3u8')) {
         res.set('Content-Type', 'application/vnd.apple.mpegurl')
         res.set('Cache-Control', 'public, max-age=10')
       } else if (filePath.endsWith('.ts') || filePath.endsWith('.m4s')) {
@@ -88,8 +152,28 @@ app.use(
         res.set('Cache-Control', 'public, max-age=86400')
       }
     },
-  }),
-)
+  })
+const freeMedia = mediaStatic(false)
+const paidMedia = mediaStatic(true)
+
+app.use('/media', async (req, res, next) => {
+  let pathname
+  try {
+    // 归一化后比对，避免 //、./、../ 等变体绕过付费集检查。
+    pathname = path.posix.normalize(decodeURIComponent(req.path))
+  } catch {
+    return res.status(400).json({ error: '无效的媒体路径' })
+  }
+  if (pathname.startsWith('../')) return res.status(400).json({ error: '无效的媒体路径' })
+  if (!lockedMedia.has(pathname)) return freeMedia(req, res, next)
+  try {
+    if (!(await vip.isVip(req))) {
+      res.set('Cache-Control', 'no-store')
+      return res.status(403).json({ error: '该集为 VIP 专享，请先开通会员' })
+    }
+  } catch (error) { return next(error) }
+  return paidMedia(req, res, next)
+})
 
 // ---------- 生产环境托管前端 ----------
 if (isProd && fs.existsSync(DIST_DIR)) {

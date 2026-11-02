@@ -1,326 +1,799 @@
 <script setup lang="ts">
-import { computed, onMounted, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, ref, watch } from 'vue'
+import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
 import { api } from '../api'
 import type { Category, DramaSummary } from '../types'
-import CategoryTabs from '../components/CategoryTabs.vue'
+import { favorites, history } from '../storage'
+import { contentChannels, dramasForChannel } from '../navigation'
+import { locale, tr, translateCategory, translateMessage } from '../i18n'
+import SiteHeader from '../components/SiteHeader.vue'
+import SiteFooter from '../components/SiteFooter.vue'
+import FeaturedCarousel from '../components/FeaturedCarousel.vue'
 import DramaCard from '../components/DramaCard.vue'
 
 defineOptions({ name: 'Home' })
-
-const SORTS = [
-  { id: 'hot', name: '最热' },
-  { id: 'new', name: '最新' },
-  { id: 'rating', name: '好评' },
-] as const
-
+const route = useRoute()
+const router = useRouter()
 const categories = ref<Category[]>([])
-const active = ref('all')
-const sort = ref<(typeof SORTS)[number]['id']>('hot')
-const keyword = ref('')
 const dramas = ref<DramaSummary[]>([])
-const loading = ref(false)
+const loading = ref(true)
 const error = ref('')
+const keyword = ref('')
+const input = ref<HTMLInputElement | null>(null)
+const localVersion = ref(0)
+const page = ref(1)
+const addressCopied = ref(false)
+const addressError = ref('')
+const currentAddress = window.location.origin
+const pageSize = 24
+const SORTS = computed(() => [
+  { id: 'hot', name: tr('最热', 'Popular') },
+  { id: 'new', name: tr('最新', 'Newest') },
+  { id: 'rating', name: tr('好评', 'Top rated') },
+] as const)
+const searchOpen = computed(() => route.query.search === '1' || Boolean(route.query.q))
+const query = computed(() => (typeof route.query.q === 'string' ? route.query.q : ''))
+const sort = computed(() =>
+  SORTS.value.some((s) => s.id === route.query.sort) ? String(route.query.sort) : 'hot',
+)
+const activeCategory = computed(() =>
+  typeof route.query.category === 'string' ? route.query.category : 'all',
+)
+const activeChannel = computed(() =>
+  typeof route.query.channel === 'string' ? route.query.channel : 'all',
+)
+const selectedChannel = computed(() =>
+  contentChannels.find((channel) => channel.id === activeChannel.value),
+)
+const activeCategoryName = computed(() =>
+  activeCategory.value === 'all'
+    ? tr('全部短剧', 'All dramas')
+    : (() => {
+        const name = categories.value.find((c) => c.id === activeCategory.value)?.name ?? '精选'
+        return tr(/(?:短剧|漫剧)$/.test(name) ? name : `${name}短剧`, translateCategory(name))
+      })(),
+)
+const view = computed(() => (typeof route.query.view === 'string' ? route.query.view : ''))
+const isOverview = computed(
+  () =>
+    !searchOpen.value &&
+    activeCategory.value === 'all' &&
+    activeChannel.value === 'all' &&
+    !view.value,
+)
+const isSpecialView = computed(() => view.value === 'favorites' || view.value === 'history')
+const pageTitle = computed(() =>
+  query.value
+    ? tr(`搜索「${query.value}」`, `Search: “${query.value}”`)
+    : view.value === 'ranking'
+      ? tr('热播排行榜', 'Trending')
+      : view.value === 'favorites'
+        ? tr('我的追剧', 'My List')
+        : view.value === 'history'
+          ? tr('观看记录', 'Watch History')
+          : view.value === 'tags'
+            ? tr('标签榜', 'Top Tags')
+            : view.value === 'addresses'
+              ? tr('官方地址', 'Site Address')
+              : searchOpen.value
+                ? tr('搜索短剧', 'Search dramas')
+                : view.value === 'all'
+                  ? sort.value === 'new'
+                    ? tr('最新上架', 'New Releases')
+                    : sort.value === 'rating'
+                      ? tr('好评推荐', 'Highly Recommended')
+                      : tr('全部短剧', 'All Dramas')
+                  : (selectedChannel.value?.name ?? activeCategoryName.value),
+)
+const displayList = computed(() => {
+  void localVersion.value
+  let result = dramasForChannel(dramas.value, activeChannel.value)
+  if (view.value === 'favorites') result = result.filter((d) => favorites.has(d.id))
+  if (view.value === 'history')
+    result = result
+      .filter((d) => history.get(d.id))
+      .sort((a, b) => (history.get(b.id)?.updatedAt ?? 0) - (history.get(a.id)?.updatedAt ?? 0))
+  return result
+})
+const featured = computed(() => {
+  const playable = dramas.value.filter((drama) => drama.episodeCount > 0)
+  const picks = ['d001', 'd015', 'd029', 'd043', 'd071']
+    .map((id) => playable.find((d) => d.id === id))
+    .filter((d): d is DramaSummary => Boolean(d))
+  return [...picks, ...playable.filter((d) => !picks.includes(d))].slice(0, 7)
+})
+const ranking = computed(() =>
+  [...dramas.value].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)).slice(0, 15),
+)
+const latest = computed(() =>
+  [...dramas.value].sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '')).slice(0, 15),
+)
+const topRated = computed(() =>
+  [...dramas.value].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)).slice(0, 15),
+)
+const categorySections = computed(() =>
+  contentChannels
+    .filter((channel) => channel.available)
+    .slice(0, 4)
+    .map((channel) => ({ channel, dramas: dramasForChannel(dramas.value, channel.id).slice(0, 15) }))
+    .filter((section) => section.dramas.length),
+)
 
-const allTabs = computed<Category[]>(() => [{ id: 'all', name: '全部' }, ...categories.value])
-const activeName = computed(() => allTabs.value.find((c) => c.id === active.value)?.name ?? '全部')
-
-let reqId = 0
+function scrollRow(event: MouseEvent, direction: -1 | 1) {
+  const wrap = (event.currentTarget as HTMLElement).closest('.row-wrap')
+  const row = wrap?.querySelector<HTMLElement>('.drama-row')
+  if (!row) return
+  const step = row.firstElementChild instanceof HTMLElement ? row.firstElementChild.offsetWidth + 12 : 240
+  row.scrollBy({ left: step * direction * 3, behavior: 'smooth' })
+}
+const rankedTags = computed(() => {
+  const counts = new Map<string, number>()
+  for (const drama of dramas.value) {
+    for (const tag of new Set(drama.tags ?? [])) counts.set(tag, (counts.get(tag) ?? 0) + 1)
+  }
+  return [...counts].map(([name, count]) => ({ name, count })).sort((a, b) => b.count - a.count)
+})
+const unavailableType = computed(() =>
+  activeChannel.value === 'novels' ? tr('小说', 'novels') : '',
+)
+const totalPages = computed(() => Math.ceil(displayList.value.length / pageSize))
+const pagedDramas = computed(() =>
+  displayList.value.slice((page.value - 1) * pageSize, page.value * pageSize),
+)
+watch(totalPages, (pages) => {
+  page.value = Math.min(page.value, Math.max(1, pages))
+})
+let requestId = 0
+let loadedQuery = ''
 async function load() {
-  const id = ++reqId
+  const id = ++requestId
   loading.value = true
   error.value = ''
   try {
-    const list = await api.dramas({ category: active.value, q: keyword.value.trim(), sort: sort.value })
-    if (id === reqId) dramas.value = list
+    const [list, cats] = await Promise.all([
+      api.dramas({
+        category: activeCategory.value,
+        q: query.value,
+        sort: view.value === 'ranking' ? 'hot' : sort.value,
+      }),
+      categories.value.length ? Promise.resolve(categories.value) : api.categories(),
+    ])
+    if (id === requestId) {
+      dramas.value = list
+      categories.value = cats
+    }
   } catch (e) {
-    if (id === reqId) error.value = (e as Error).message
+    if (id === requestId) error.value = e instanceof Error ? e.message : '加载失败，请稍后重试'
   } finally {
-    if (id === reqId) loading.value = false
+    if (id === requestId) loading.value = false
   }
 }
-
-let timer: number | undefined
-watch(keyword, () => {
-  window.clearTimeout(timer)
-  timer = window.setTimeout(load, 250)
-})
-watch([active, sort], load)
-
-onMounted(async () => {
-  try {
-    categories.value = await api.categories()
-  } catch (e) {
-    error.value = (e as Error).message
+function applySearch() {
+  const q = keyword.value.trim()
+  router.push({ name: 'home', query: q ? { q, search: '1' } : { search: '1' } })
+}
+function clearSearch() {
+  keyword.value = ''
+  applySearch()
+  nextTick(() => input.value?.focus())
+}
+function changeSort(next: string) {
+  router.replace({ name: 'home', query: { ...route.query, sort: next } })
+}
+function channelQuery(channel: string): LocationQueryRaw {
+  return {
+    ...route.query,
+    view: view.value === 'ranking' ? 'ranking' : 'all',
+    category: undefined,
+    channel: channel === 'all' ? undefined : channel,
   }
-  load()
+}
+async function copyAddress() {
+  addressCopied.value = false
+  addressError.value = ''
+  try {
+    await navigator.clipboard.writeText(currentAddress)
+    addressCopied.value = true
+  } catch {
+    addressError.value = '复制失败，请选中上方地址后手动复制。'
+  }
+}
+function goPage(next: number) {
+  page.value = next
+  document.getElementById('catalog-heading')?.scrollIntoView({ block: 'start', behavior: 'smooth' })
+}
+watch(
+  [pageTitle, isOverview, locale, () => route.name],
+  () => {
+    if (route.name !== 'home') return
+    document.title = `${isOverview.value ? tr('精品故事', 'Featured stories') : pageTitle.value} · ${tr('短剧剧场', 'Drama Theater')}`
+  },
+  { immediate: true },
+)
+watch(
+  () => route.fullPath,
+  async () => {
+    if (route.name !== 'home') return
+    keyword.value = query.value
+    const queryKey = JSON.stringify(route.query)
+    if (queryKey !== loadedQuery) {
+      loadedQuery = queryKey
+      page.value = 1
+      await load()
+    }
+    if (searchOpen.value) nextTick(() => input.value?.focus())
+  },
+  { immediate: true },
+)
+onActivated(() => {
+  localVersion.value++
 })
 </script>
 
 <template>
-  <div class="home">
-    <!-- 顶栏 -->
-    <header class="header">
-      <div class="header-inner container">
-        <router-link class="logo" to="/">
-          <span class="logo-a">短</span><span class="logo-b">剧</span>
-        </router-link>
-        <form class="search" @submit.prevent>
-          <svg class="search-icon" viewBox="0 0 24 24" width="16" height="16" aria-hidden="true">
-            <path
-              fill="none"
-              stroke="currentColor"
-              stroke-width="2.4"
-              stroke-linecap="round"
-              d="M10.5 3a7.5 7.5 0 1 1 0 15 7.5 7.5 0 0 1 0-15zM16 16l5 5"
-            />
-          </svg>
-          <input v-model="keyword" type="search" placeholder="搜索短剧" />
-        </form>
-      </div>
-    </header>
-
-    <CategoryTabs v-model="active" :categories="allTabs" />
-
-    <main class="content container">
-      <div class="section-head">
-        <h2 class="section-title">{{ keyword ? `搜索「${keyword}」` : `${activeName}短剧` }}</h2>
-        <div class="sorts">
-          <button
-            v-for="s in SORTS"
-            :key="s.id"
-            class="sort"
-            :data-active="sort === s.id"
-            @click="sort = s.id"
-          >
-            {{ s.name }}
-          </button>
+  <div class="home-page">
+    <SiteHeader />
+    <main class="container">
+      <section v-if="isOverview" class="home-intro">
+        <div class="intro-copy">
+          <h1>{{ tr('成人短剧 · 欧美短剧 · 真人剧', 'Adult dramas · Western shorts · Live action') }} <span>{{ tr('免费在线观看', 'Watch free online') }}</span></h1>
+          <p>
+            {{ tr('汇聚都市、甜宠、古装、悬疑与欧美短剧等精选内容，发现热门剧集与精品故事，竖屏横屏随心切换，手机电脑高清畅享。', 'Discover modern romance, historical tales, mysteries and western shorts. Enjoy popular series and memorable stories in HD on your phone or computer.') }}
+          </p>
         </div>
+      </section>      <section v-else class="browse-head">
+        <nav class="breadcrumb" :aria-label="tr('面包屑', 'Breadcrumb')">
+          <router-link to="/">{{ tr('首页', 'Home') }}</router-link><span>›</span><span>{{ pageTitle }}</span>
+        </nav>
+        <h1>{{ pageTitle }}</h1>
+        <p>
+          {{
+            view === 'favorites'
+              ? tr('收藏喜欢的剧集，把想看的故事留在这里。', 'Save your favorite dramas and the stories you want to watch.')
+              : view === 'history'
+                ? tr('接着上次的故事，继续你的精彩时刻。', 'Pick up where you left off and enjoy the next chapter.')
+                : view === 'ranking'
+                  ? tr('发现大家都在追的好剧，按播放热度为你呈现。', 'Discover what everyone is watching, ranked by popularity.')
+                  : view === 'tags'
+                    ? tr('按收录剧集数量排列，点击标签发现相关故事。', 'Explore tags ranked by the number of dramas in the collection.')
+                    : view === 'addresses'
+                      ? tr('收藏当前访问地址，随时回来发现精彩故事。', 'Bookmark this address and come back for more great stories.')
+                      : tr('好故事不止一种。挑选喜欢的题材，发现你的下一部好剧。', 'Explore your favorite genres and discover your next great drama.')
+          }}
+        </p>
+      </section>
+      <form v-if="searchOpen" class="intro-search open" role="search" @submit.prevent="applySearch">
+        <svg viewBox="0 0 24 24" aria-hidden="true">
+          <circle cx="10.5" cy="10.5" r="6.5" />
+          <path d="m16 16 5 5" />
+        </svg>
+        <input
+          ref="input"
+          v-model="keyword"
+          type="search"
+          :placeholder="tr('搜索剧名、剧情或标签', 'Search titles, stories or tags')"
+          :aria-label="tr('搜索剧名、剧情或标签', 'Search titles, stories or tags')"
+        />
+        <button v-if="keyword" type="button" :aria-label="tr('清空搜索', 'Clear search')" @click="clearSearch">×</button>
+        <button class="submit" type="submit">{{ tr('搜索', 'Search') }}</button>
+      </form>
+      <div v-if="error" class="error-banner" role="alert">
+        {{ tr('加载失败：', 'Unable to load: ') }}{{ translateMessage(error) }} <button @click="load">{{ tr('重试', 'Retry') }}</button>
       </div>
-
-      <p v-if="error" class="state">加载失败：{{ error }}</p>
-      <p v-else-if="!loading && dramas.length === 0" class="state">没有找到相关短剧</p>
-      <div v-else class="grid" :class="{ dim: loading }">
-        <DramaCard v-for="d in dramas" :key="d.id" :drama="d" />
+      <template v-else-if="!loading">
+        <template v-if="isOverview">
+          <section v-if="featured.length" class="hero-section">
+            <FeaturedCarousel :dramas="featured" />
+          </section>
+          <section v-if="ranking.length" class="home-section">
+            <div class="section-head">
+              <h2 class="section-heading">{{ tr('正在热播', 'Trending Now') }}</h2>
+            </div>
+            <div class="row-wrap">
+              <button class="row-arrow prev" :aria-label="tr('向左滚动', 'Scroll left')" @click="scrollRow($event, -1)">‹</button>
+              <div class="drama-row">
+                <DramaCard v-for="drama in ranking" :key="drama.id" :drama="drama" />
+              </div>
+              <button class="row-arrow next" :aria-label="tr('向右滚动', 'Scroll right')" @click="scrollRow($event, 1)">›</button>
+            </div>
+          </section>
+          <section v-if="latest.length" class="home-section">
+            <div class="section-head">
+              <h2 class="section-heading">{{ tr('最新上架', 'New Releases') }}</h2>
+              <router-link class="section-more" :to="{ path: '/', query: { view: 'all', sort: 'new' } }"
+                >{{ tr('更多', 'View all') }} <span>›</span></router-link
+              >
+            </div>
+            <div class="row-wrap">
+              <button class="row-arrow prev" :aria-label="tr('向左滚动', 'Scroll left')" @click="scrollRow($event, -1)">‹</button>
+              <div class="drama-row">
+                <DramaCard v-for="drama in latest" :key="drama.id" :drama="drama" />
+              </div>
+              <button class="row-arrow next" :aria-label="tr('向右滚动', 'Scroll right')" @click="scrollRow($event, 1)">›</button>
+            </div>
+          </section>
+          <section v-if="topRated.length" class="home-section">
+            <div class="section-head">
+              <h2 class="section-heading">{{ tr('好评推荐', 'Highly Recommended') }}</h2>
+              <router-link class="section-more" :to="{ path: '/', query: { view: 'all', sort: 'rating' } }"
+                >{{ tr('更多', 'View all') }} <span>›</span></router-link
+              >
+            </div>
+            <div class="row-wrap">
+              <button class="row-arrow prev" :aria-label="tr('向左滚动', 'Scroll left')" @click="scrollRow($event, -1)">‹</button>
+              <div class="drama-row">
+                <DramaCard v-for="drama in topRated" :key="drama.id" :drama="drama" />
+              </div>
+              <button class="row-arrow next" :aria-label="tr('向右滚动', 'Scroll right')" @click="scrollRow($event, 1)">›</button>
+            </div>
+          </section>
+          <section
+            v-for="section in categorySections"
+            :key="section.channel.id"
+            class="home-section category-section"
+          >
+            <div class="section-head">
+              <h2 class="section-heading">{{ section.channel.name }}</h2>
+              <router-link
+                class="section-more"
+                :to="{ path: '/', query: { channel: section.channel.id } }"
+                >{{ tr('更多', 'View all') }} <span>›</span></router-link
+              >
+            </div>
+            <div class="row-wrap">
+              <button class="row-arrow prev" :aria-label="tr('向左滚动', 'Scroll left')" @click="scrollRow($event, -1)">‹</button>
+              <div class="drama-row">
+                <DramaCard v-for="drama in section.dramas" :key="drama.id" :drama="drama" />
+              </div>
+              <button class="row-arrow next" :aria-label="tr('向右滚动', 'Scroll right')" @click="scrollRow($event, 1)">›</button>
+            </div>
+          </section>
+          <div v-if="!dramas.length" class="empty-state">
+            <h2>{{ tr('剧集准备中', 'Dramas coming soon') }}</h2>
+            <p>{{ tr('精彩故事，即将登场。', 'More great stories are on the way.') }}</p>
+          </div>
+        </template>
+        <section v-else-if="view === 'tags'" class="home-section">
+          <div class="section-head">
+            <h2 class="section-heading">
+              {{ tr('热门标签', 'Popular tags') }}<small>{{ tr(`${rankedTags.length} 个`, `${rankedTags.length} tags`) }}</small>
+            </h2>
+          </div>
+          <div v-if="rankedTags.length" class="tag-ranking">
+            <router-link
+              v-for="(tag, index) in rankedTags"
+              :key="tag.name"
+              :to="{ path: '/', query: { q: tag.name, search: '1' } }"
+            >
+              <span class="tag-rank" :class="{ leading: index < 3 }">{{ index + 1 }}</span>
+              <strong>{{ tag.name }}</strong>
+              <small>{{ tr(`${tag.count} 部`, `${tag.count} ${tag.count === 1 ? 'drama' : 'dramas'}`) }}</small>
+            </router-link>
+          </div>
+          <div v-else class="empty-state">
+            <h2>{{ tr('暂无标签', 'No tags yet') }}</h2>
+            <p>{{ tr('剧集标签整理中。', 'We are organizing the drama tags.') }}</p>
+          </div>
+        </section>
+        <section v-else-if="view === 'addresses'" class="home-section">
+          <div class="address-card">
+            <h2 class="section-heading">{{ tr('当前访问地址', 'Current address') }}</h2>
+            <a :href="currentAddress" class="current-address">{{ currentAddress }}</a>
+            <button class="button-primary" @click="copyAddress">
+              {{ addressCopied ? tr('已复制地址', 'Address copied') : tr('复制地址', 'Copy address') }}
+            </button>
+            <p v-if="addressCopied" class="address-status" role="status">
+              {{ tr('地址已复制，可保存到你的书签。', 'Address copied. Save it to your bookmarks.') }}
+            </p>
+            <p v-if="addressError" class="address-status" role="alert">{{ translateMessage(addressError) }}</p>
+          </div>
+        </section>
+        <section v-else class="home-section catalog-section">
+          <nav v-if="!isSpecialView" class="category-filters" :aria-label="tr('剧集分类', 'Drama categories')">
+            <router-link
+              :to="{ path: '/', query: channelQuery('all') }"
+              :class="{ active: activeChannel === 'all' && activeCategory === 'all' }"
+              >{{ tr('全部', 'All') }}</router-link
+            >
+            <router-link
+              v-for="channel in contentChannels.filter((c) => c.available)"
+              :key="channel.id"
+              :to="{ path: '/', query: channelQuery(channel.id) }"
+              :class="{ active: activeChannel === channel.id }"
+              >{{ channel.name }}</router-link
+            >
+          </nav>
+          <div id="catalog-heading" class="section-head">
+            <h2 class="section-heading">
+              {{
+                isSpecialView
+                  ? tr('我的剧集', 'My dramas')
+                  : query
+                    ? tr('搜索结果', 'Search results')
+                    : unavailableType
+                      ? tr(`${unavailableType}列表`, 'Novels')
+                      : tr('剧集列表', 'Dramas')
+              }}<small>{{ tr(`${displayList.length} 部`, `${displayList.length} titles`) }}</small>
+            </h2>
+            <div v-if="!isSpecialView && view !== 'ranking'" class="sorts">
+              <button
+                v-for="item in SORTS"
+                :key="item.id"
+                :class="{ active: sort === item.id }"
+                :aria-pressed="sort === item.id"
+                @click="changeSort(item.id)"
+              >
+                {{ item.name }}
+              </button>
+            </div>
+          </div>
+          <div v-if="displayList.length" class="drama-grid">
+            <DramaCard
+              v-for="(drama, i) in pagedDramas"
+              :key="drama.id"
+              :drama="drama"
+              :rank="view === 'ranking' ? (page - 1) * pageSize + i + 1 : undefined"
+            />
+          </div>
+          <div v-else class="empty-state">
+            <h2>
+              {{
+                unavailableType
+                  ? tr(`暂无${unavailableType}`, `No ${unavailableType} yet`)
+                  : isSpecialView
+                    ? tr('这里还没有剧集', 'No dramas here yet')
+                    : tr('没有找到相关短剧', 'No matching dramas found')
+              }}
+            </h2>
+            <p>
+              {{
+                unavailableType
+                  ? tr(`${unavailableType}内容准备中，先去其他分类看看吧。`, 'New titles are coming soon. Explore another category for now.')
+                  : isSpecialView
+                    ? tr('去首页发现一部喜欢的故事吧。', 'Visit the homepage to find a story you will love.')
+                    : tr('试试更换关键词或分类。', 'Try a different keyword or category.')
+              }}
+            </p>
+            <router-link class="button-primary" to="/">{{ tr('发现好剧', 'Discover dramas') }}</router-link>
+          </div>
+          <nav v-if="totalPages > 1" class="pagination" :aria-label="tr('分页', 'Pagination')">
+            <button :disabled="page === 1" :aria-label="tr('上一页', 'Previous page')" @click="goPage(page - 1)">‹</button>
+            <button
+              v-for="number in totalPages"
+              :key="number"
+              :class="{ active: page === number }"
+              :aria-current="page === number ? 'page' : undefined"
+              @click="goPage(number)"
+            >
+              {{ number }}
+            </button>
+            <button :disabled="page === totalPages" :aria-label="tr('下一页', 'Next page')" @click="goPage(page + 1)">
+              ›
+            </button>
+          </nav>
+        </section>
+      </template>
+      <div v-else class="loading-state" role="status">
+        <span class="loading-spinner" />{{ tr('正在加载精彩内容…', 'Loading stories…') }}
       </div>
     </main>
-
-    <footer class="footer">
-      <div class="container">© {{ new Date().getFullYear() }} 短剧</div>
-    </footer>
+    <SiteFooter />
   </div>
 </template>
-
 <style scoped>
-.home {
-  display: flex;
-  flex-direction: column;
-  min-height: 100%;
-  padding-top: var(--safe-top);
-  background: var(--bg);
+.home-page {
+  min-height: 100vh;
 }
-
-/* ---------- 顶栏 ---------- */
-.header {
-  position: sticky;
-  top: 0;
-  z-index: 30;
-  background: #000;
+.home-page :deep(main.container),
+main.container {
+  padding-top: 88px;
+  padding-bottom: 40px;
 }
-.header-inner {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-  height: 56px;
+.home-intro {
+  padding: 28px 0 4px;
 }
-.logo {
-  display: inline-flex;
-  align-items: center;
-  flex: 0 0 auto;
-  font-size: 22px;
-  font-weight: 900;
-  line-height: 1;
-  white-space: nowrap;
+.home-intro h1 {
+  font-size: 26px;
+  font-weight: 600;
+  line-height: 1.35;
+  letter-spacing: -0.2px;
 }
-.logo-a {
-  color: #fff;
+.home-intro h1 span {
+  color: var(--accent);
 }
-.logo-b {
-  margin-left: 2px;
-  padding: 3px 5px;
-  border-radius: var(--radius);
-  background: var(--accent);
-  color: var(--accent-fg);
+.home-intro p {
+  margin-top: 8px;
+  color: var(--fg-2);
+  font-size: 14px;
+  line-height: 1.7;
 }
-.search {
-  position: relative;
-  flex: 1;
-  max-width: 520px;
-  height: 38px;
-}
-.search-icon {
-  position: absolute;
-  left: 12px;
-  top: 50%;
-  transform: translateY(-50%);
-  color: var(--fg-3);
-  pointer-events: none;
-}
-.search input {
-  width: 100%;
-  height: 100%;
-  padding: 0 12px 0 36px;
-  font-size: 15px;
-  border: 1px solid transparent;
-  border-radius: var(--radius);
-  background: var(--bg-2);
-  color: var(--fg);
-  font: inherit;
-  outline: none;
-  transition: border-color 0.15s, background 0.15s;
-}
-.search input:focus {
-  background: var(--bg-3);
-  border-color: var(--fg-3);
-}
-.search input::placeholder {
-  color: var(--fg-3);
-}
-
-/* ---------- 内容 ---------- */
-.content {
-  flex: 1;
-  padding-top: 16px;
+.hero-section {
+  padding-top: 8px;
   padding-bottom: 32px;
+}
+.intro-search {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  flex: 0 1 320px;
+  min-width: 250px;
+  height: 44px;
+  padding: 0 12px 0 14px;
+  background: #1f1f1f;
+  border: 1px solid var(--border);
+  border-radius: 22px;
+  transition: border-color 0.2s;
+}
+.intro-search:focus-within {
+  border-color: var(--accent);
+}
+.intro-search svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 2;
+  color: var(--fg-3);
+}
+.intro-search input {
+  min-width: 0;
+  flex: 1;
+  color: var(--fg);
+  background: transparent;
+  border: 0;
+  outline: 0;
+  font-size: 14px;
+}
+.intro-search input::placeholder {
+  color: var(--fg-3);
+}
+.intro-search > button:not(.submit) {
+  color: var(--fg-3);
+  font-size: 20px;
+}
+.intro-search .submit {
+  padding: 7px 14px;
+  border-radius: 15px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+}
+.home-section {
+  padding: 0 0 40px;
 }
 .section-head {
   display: flex;
-  align-items: baseline;
+  flex-wrap: wrap;
+  align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 12px;
+  gap: 14px;
+  margin-bottom: 16px;
 }
-.section-title {
-  margin: 0;
-  font-size: 18px;
+.section-more {
+  flex-shrink: 0;
+  color: var(--fg-2);
+  font-size: 14px;
+  transition: color 0.15s;
+}
+.section-more:hover {
+  color: var(--accent);
+}
+.section-more span {
+  margin-left: 2px;
+}
+.tag-ranking {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+.tag-ranking a {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 18px;
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+.tag-ranking a:hover {
+  background: var(--bg-3);
+}
+.tag-rank {
+  color: var(--fg-3);
+  font-size: 17px;
+  min-width: 22px;
   font-weight: 700;
+}
+.tag-rank.leading {
+  color: var(--accent);
+}
+.tag-ranking strong {
+  flex: 1;
+  font-weight: 500;
+}
+.tag-ranking small {
+  color: var(--fg-3);
   white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
+}
+.address-card {
+  padding: 26px;
+  border-radius: var(--radius);
+  background: var(--bg-2);
+}
+.current-address {
+  display: block;
+  width: fit-content;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+  margin: 20px 0;
+  color: var(--accent);
+  font-size: 18px;
+}
+.address-status {
+  color: var(--fg-2);
+  margin-top: 14px;
 }
 .sorts {
   display: flex;
-  gap: 16px;
-  flex: 0 0 auto;
-  font-size: 15px;
+  flex-wrap: wrap;
+  gap: 18px;
 }
-.sort {
+.sorts button {
   color: var(--fg-2);
-  transition: color 0.15s;
+  font-size: 14px;
 }
-.sort:hover {
-  color: var(--fg);
+.sorts button.active,
+.sorts button:hover {
+  color: var(--accent);
+  font-weight: 600;
 }
-.sort[data-active='true'] {
-  color: var(--fg);
-  font-weight: 700;
+.error-banner {
+  margin-top: 20px;
+  padding: 12px 16px;
+  color: var(--accent-fg-soft);
+  background: var(--accent-soft);
+  border: 1px solid var(--accent-line);
+  border-radius: var(--radius);
 }
-
-.grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 16px 10px;
-  transition: opacity 0.15s;
+.error-banner button {
+  margin-left: 10px;
+  color: #fff;
+  text-decoration: underline;
 }
-.grid.dim {
-  opacity: 0.6;
+.loading-state {
+  display: flex;
+  min-height: 300px;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--fg-2);
 }
-@media (min-width: 560px) {
-  .grid {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
+.loading-spinner {
+  width: 22px;
+  height: 22px;
+  border: 2px solid rgba(255, 255, 255, 0.16);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
   }
 }
-@media (min-width: 768px) {
-  .grid {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-    gap: 20px 12px;
+@media (max-width: 768px) {
+  .tag-ranking {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
-}
-@media (min-width: 960px) {
-  .header-inner {
-    height: 64px;
-    gap: 32px;
+  .home-page :deep(main.container),
+  main.container {
+    padding-top: 70px;
   }
-  .logo {
-    font-size: 26px;
+  .home-intro {
+    padding-top: 16px;
   }
-  .logo-b {
-    padding: 4px 7px;
+  .home-intro h1 {
+    font-size: 19px;
   }
-  .search {
-    height: 42px;
+  .home-intro p {
+    font-size: 13px;
   }
-  .search input {
-    font-size: 16px;
-  }
-  .content {
-    padding-top: 24px;
+  .home-section {
+    padding-bottom: 26px;
   }
   .section-head {
-    margin-bottom: 16px;
+    margin-bottom: 12px;
   }
-  .section-title {
+  .sorts {
+    gap: 12px;
+  }
+}
+@media (max-width: 480px) {
+  .tag-ranking {
+    grid-template-columns: 1fr;
+  }
+  .intro-search {
+    min-width: 0;
+  }
+}
+.browse-head {
+  padding: 18px 0 4px;
+}
+.breadcrumb {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  font-size: 13px;
+  color: var(--fg-3);
+  margin-bottom: 14px;
+}
+.breadcrumb a:hover {
+  color: var(--accent);
+}
+.browse-head h1 {
+  font-size: 28px;
+  line-height: 1.3;
+  font-weight: 600;
+  margin-bottom: 10px;
+}
+.browse-head p {
+  color: var(--fg-2);
+  font-size: 14px;
+}
+.intro-search.open {
+  width: 100%;
+  max-width: 620px;
+  margin-top: 20px;
+}
+.category-filters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 22px;
+}
+.category-filters a {
+  padding: 7px 16px;
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--fg-2);
+  font-size: 14px;
+}
+.category-filters a.active,
+.category-filters a:hover {
+  background: var(--accent);
+  color: #fff;
+}
+#catalog-heading {
+  scroll-margin-top: 90px;
+}
+.pagination {
+  display: flex;
+  gap: 8px;
+  justify-content: center;
+  flex-wrap: wrap;
+  margin-top: 32px;
+}
+.pagination button {
+  min-width: 38px;
+  height: 38px;
+  padding-inline: 12px;
+  border-radius: 6px;
+  background: var(--bg-2);
+  color: var(--fg-2);
+  font-size: 14px;
+}
+.pagination button.active {
+  background: var(--accent);
+  color: #fff;
+}
+@media (max-width: 768px) {
+  .browse-head h1 {
     font-size: 22px;
   }
-  .sorts {
-    gap: 20px;
-    font-size: 16px;
+  .category-filters a {
+    padding: 6px 13px;
+    font-size: 13px;
   }
-  .grid {
-    grid-template-columns: repeat(5, minmax(0, 1fr));
-    gap: 26px 16px;
-  }
-}
-@media (min-width: 1280px) {
-  .grid {
-    grid-template-columns: repeat(6, minmax(0, 1fr));
-  }
-}
-@media (min-width: 1600px) {
-  .header-inner {
-    height: 72px;
-  }
-  .logo {
-    font-size: 30px;
-  }
-  .search {
-    height: 46px;
-    max-width: 600px;
-  }
-  .search input {
-    font-size: 17px;
-  }
-  .section-title {
-    font-size: 24px;
-  }
-  .sorts {
-    font-size: 17px;
-  }
-  .grid {
-    grid-template-columns: repeat(7, minmax(0, 1fr));
-    gap: 30px 18px;
-  }
-}
-
-.state {
-  padding: 80px 0;
-  text-align: center;
-  color: var(--fg-2);
-}
-
-.footer {
-  padding: 20px 0 calc(20px + var(--safe-bottom));
-  border-top: 1px solid var(--border);
-  color: var(--fg-3);
-  font-size: 12px;
 }
 </style>

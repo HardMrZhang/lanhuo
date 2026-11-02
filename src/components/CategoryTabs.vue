@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { nextTick, ref, watch } from 'vue'
 import type { Category } from '../types'
+import { tr, translateCategory } from '../i18n'
 
 const props = defineProps<{
   categories: Category[]
@@ -26,7 +27,7 @@ watch(
 </script>
 
 <template>
-  <nav class="tabs-wrap">
+  <nav class="tabs-wrap" :aria-label="tr('剧集分类', 'Drama categories')">
     <div ref="bar" class="tabs container">
       <button
         v-for="c in categories"
@@ -35,7 +36,7 @@ watch(
         :data-active="c.id === modelValue"
         @click="select(c.id)"
       >
-        {{ c.name }}
+        {{ translateCategory(c.name) }}
       </button>
     </div>
   </nav>

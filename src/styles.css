@@ -1,93 +1,258 @@
 :root {
-  --bg: #000;
+  --bg: #131313;
   --bg-2: #1b1b1b;
-  --bg-3: #2a2a2a;
-  --fg: #fff;
-  --fg-2: #969696;
-  --fg-3: #6b6b6b;
-  --accent: #ff9000;
-  --accent-fg: #000;
-  --border: #2c2c2c;
-  --radius: 4px;
-  /* 所有区块共用的水平内边距与最大宽度，保证左边缘对齐 */
-  --gutter: 10px;
-  --container: 1760px;
+  --bg-3: #232323;
+  --card: #1b1b1b;
+  --footer: #272727;
+  --fg: #ffffff;
+  --fg-2: rgba(255, 255, 255, 0.68);
+  --fg-3: rgba(255, 255, 255, 0.3);
+  --accent: #f5315e;
+  --accent-hover: #d92550;
+  --accent-fg: #fff;
+  /* 强调色的半透明层级，错误/提示类样式统一走这套 */
+  --accent-soft: rgba(245, 49, 94, 0.1);
+  --accent-line: rgba(245, 49, 94, 0.28);
+  --accent-fg-soft: #ffc5ca;
+  --success: #8ccbaf;
+  --gold: #ffc24b;
+  --gradient: #f5315e;
+  --border: #262525;
+  --radius: 6px;
+  --radius-lg: 20px;
+  --gutter: 20px;
+  --container: 1233px;
   --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   color-scheme: dark;
 }
-
 * {
   box-sizing: border-box;
   -webkit-tap-highlight-color: transparent;
 }
-
 html,
 body,
 #app {
   margin: 0;
-  height: 100%;
-  background: var(--bg);
+  min-height: 100%;
+}
+html {
+  scroll-behavior: smooth;
+}
+body {
   color: var(--fg);
+  background: var(--bg);
   font-family:
-    Arial, -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Helvetica Neue', 'Microsoft YaHei',
+    'Inter', -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Microsoft YaHei', 'Segoe UI',
     sans-serif;
-  font-size: 15px;
-  line-height: 1.4;
-  overscroll-behavior-y: none;
+  font-size: 16px;
+  line-height: 1.6;
+  overflow-x: hidden;
+  -webkit-font-smoothing: antialiased;
 }
-@media (min-width: 960px) {
-  html,
-  body,
-  #app {
-    font-size: 16px;
-  }
-}
-@media (min-width: 1600px) {
-  html,
-  body,
-  #app {
-    font-size: 17px;
-  }
-}
-
-button {
+button,
+input,
+textarea {
   font: inherit;
+}
+button {
   color: inherit;
   background: none;
   border: 0;
   padding: 0;
   cursor: pointer;
 }
-
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
 a {
   color: inherit;
   text-decoration: none;
 }
-
 img {
   display: block;
+  max-width: 100%;
 }
-
-::-webkit-scrollbar {
-  display: none;
+h1,
+h2,
+h3,
+p {
+  margin: 0;
 }
-
+button,
+a,
+input {
+  touch-action: manipulation;
+}
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+::selection {
+  background: rgba(245, 49, 94, 0.35);
+}
 .container {
   width: 100%;
   max-width: var(--container);
   margin: 0 auto;
-  padding-left: var(--gutter);
-  padding-right: var(--gutter);
+  padding-inline: var(--gutter);
 }
-
-@media (min-width: 960px) {
+/* NetShort 的板块标题：30px 中等字重，无装饰条 */
+.section-heading {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 30px;
+  font-weight: 500;
+  letter-spacing: -0.3px;
+  line-height: 1.2;
+}
+.section-heading small {
+  color: var(--fg-3);
+  font-size: 13px;
+  font-weight: 400;
+}
+.drama-grid {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  gap: 22px 12px;
+}
+/* 横向滚动的剧集行，一屏 5 个 */
+.drama-row {
+  display: grid;
+  grid-auto-flow: column;
+  grid-auto-columns: calc((100% - 48px) / 5);
+  gap: 12px;
+  overflow-x: auto;
+  padding-bottom: 4px;
+  scroll-snap-type: x mandatory;
+  scrollbar-width: none;
+}
+.drama-row::-webkit-scrollbar {
+  display: none;
+}
+.drama-row > * {
+  scroll-snap-align: start;
+}
+.row-wrap {
+  position: relative;
+}
+.row-arrow {
+  position: absolute;
+  z-index: 5;
+  top: 32%;
+  width: 42px;
+  height: 42px;
+  display: grid;
+  place-content: center;
+  border-radius: 50%;
+  background: rgba(20, 20, 20, 0.86);
+  border: 1px solid var(--border);
+  color: #fff;
+  font-size: 22px;
+  line-height: 1;
+  opacity: 0;
+  transition: opacity 0.2s, background 0.2s;
+}
+.row-wrap:hover .row-arrow {
+  opacity: 1;
+}
+.row-arrow:hover {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.row-arrow.prev {
+  left: -18px;
+}
+.row-arrow.next {
+  right: -18px;
+}
+.button-primary,
+.button-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  border-radius: 8px;
+  padding: 11px 26px;
+  font-size: 14px;
+  font-weight: 600;
+  transition: background 0.18s, border-color 0.18s;
+}
+.button-primary {
+  color: #fff;
+  background: var(--accent);
+}
+.button-primary:hover {
+  background: var(--accent-hover);
+}
+.button-secondary {
+  color: #fff;
+  background: #3a3a3a;
+}
+.button-secondary:hover {
+  background: #474747;
+}
+.empty-state {
+  padding: 70px 16px;
+  text-align: center;
+  color: var(--fg-2);
+}
+.empty-state h2 {
+  color: var(--fg);
+  font-size: 21px;
+  margin-bottom: 8px;
+}
+.empty-state .button-primary {
+  margin-top: 22px;
+}
+@media (max-width: 1024px) {
+  .drama-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+  .drama-row {
+    grid-auto-columns: calc((100% - 36px) / 4);
+  }
+  .section-heading {
+    font-size: 24px;
+  }
+}
+@media (max-width: 768px) {
   :root {
     --gutter: 16px;
   }
+  .drama-grid {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 16px 10px;
+  }
+  .drama-row {
+    grid-auto-columns: calc((100% - 20px) / 3);
+    gap: 10px;
+  }
+  .section-heading {
+    font-size: 19px;
+  }
+  .row-arrow {
+    display: none;
+  }
 }
-@media (min-width: 1440px) {
-  :root {
-    --gutter: 20px;
+@media (max-width: 480px) {
+  .drama-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .drama-row {
+    grid-auto-columns: calc((100% - 10px) / 2);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  html {
+    scroll-behavior: auto;
+  }
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    transition-duration: 0.01ms !important;
   }
 }

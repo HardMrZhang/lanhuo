@@ -9,6 +9,7 @@ export default defineConfig({
     proxy: {
       '/api': 'http://localhost:3001',
       '/media': 'http://localhost:3001',
+      '/s3-hls': 'http://localhost:3001',
     },
   },
   build: {

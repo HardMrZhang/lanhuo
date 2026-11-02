@@ -18,6 +18,8 @@ export interface Drama {
   title: string
   cover: string
   description: string
+  /** 显式导入栏目；未设置的旧演示数据继续按题材分类匹配。 */
+  channelId?: 'shorts' | 'anime' | 'western'
   categoryIds: string[]
   tags?: string[]
   /** 完结 / 更新中 */

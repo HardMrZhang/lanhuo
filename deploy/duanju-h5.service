@@ -1,0 +1,37 @@
+# duanju-h5 东京 EC2 部署（ap-northeast-1）
+# 架构：单 EC2（Node 22 + Express 托管 dist/ + /api + /media + /s3-hls 中转）
+# 视频走 S3 私有桶（服务端 IAM 中转），封面/海报随 dist/ 一起发，MySQL 用 EC2 本机或 RDS。
+#
+# 前置（本地只需做一次）：
+#   1. 在东京建 EC2（Amazon Linux 2023, t3.small 起，20GB+ 磁盘，安全组放行 80/443）
+#   2. 域名解析到 EC2 公网 IP（A 记录），记下域名填 APP_URL（支付回调要求 HTTPS）
+#   3. 给 EC2 挂 IAM Role（S3 只读 duanju-h5-hls-473041657070/hls/*），就不用在服务器放 AK/SK
+#
+# 部署（每次发版）：
+#   npm run build && rsync -avz --delete \
+#     --exclude node_modules --exclude hls-output --exclude .env --exclude '*.log' \
+#     ./ ec2-user@<EC2公网IP>:/opt/duanju-h5/
+#   ssh ec2-user@<EC2公网IP> 'cd /opt/duanju-h5 && npm ci --omit=dev && sudo systemctl restart duanju-h5'
+#
+# 回滚：data/dramas.json 每次指链前自动备份到 data/backups/，拷回即可。
+
+[Unit]
+Description=duanju-h5 short drama H5
+After=network.target
+StartLimitIntervalSec=60
+StartLimitBurst=3
+
+[Service]
+Type=simple
+User=ec2-user
+WorkingDirectory=/opt/duanju-h5
+Environment=NODE_ENV=production
+# .env 由部署时手工 scp 上去（不在 git 里），systemd 不再逐项写密钥
+ExecStart=/usr/bin/node --env-file=/opt/duanju-h5/.env /opt/duanju-h5/server/index.js
+Restart=on-failure
+RestartSec=5
+# 文件监听（data/dramas.json 热重载）需要足够 fd
+LimitNOFILE=16384
+
+[Install]
+WantedBy=multi-user.target

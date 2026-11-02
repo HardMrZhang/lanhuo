@@ -4,7 +4,25 @@ dist/
 *.log
 .env
 .env.*
+!.env.example
+data/*.sqlite*
+.playwright-cli/
+output/playwright/
+data/backups/
 
 # 媒体文件不入库（体积大），目录结构保留
 media/*
 !media/.gitkeep
+
+# HLS 转码产物（体积更大），只传 S3 不入库
+hls-output/
+hls-transcode.log
+
+# 海报图片/封面资源（体积大，22M+），不入库；只推代码
+public/posters/
+!public/favicon.svg
+
+# 本地导入中间产物（自动生成，可重跑）
+data/local-cover-sources.json
+data/local-import-manifest.json
+data/local-import-report.json

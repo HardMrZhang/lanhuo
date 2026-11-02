@@ -1,136 +1,247 @@
 <script setup lang="ts">
+import { computed, ref } from 'vue'
 import type { DramaSummary } from '../types'
+import { tr } from '../i18n'
+import { favorites } from '../storage'
+import CoverImage from './CoverImage.vue'
 
-defineProps<{ drama: DramaSummary }>()
+const props = defineProps<{ drama: DramaSummary; rank?: number }>()
+const saved = ref(favorites.has(props.drama.id))
+const hasEpisodes = computed(() => props.drama.episodeCount > 0)
+const episodeText = computed(() =>
+  !hasEpisodes.value
+    ? tr('待更新', 'Coming soon')
+    : props.drama.status === 'completed'
+      ? tr(`全${props.drama.episodeCount}集`, `${props.drama.episodeCount} eps`)
+      : tr(`更新至${props.drama.episodeCount}集`, `Ep ${props.drama.episodeCount}`),
+)
 
-function formatViews(n?: number) {
-  if (!n) return '0'
-  if (n >= 1e8) return `${(n / 1e8).toFixed(1).replace(/\.0$/, '')}亿`
-  if (n >= 1e4) return `${(n / 1e4).toFixed(1).replace(/\.0$/, '')}万`
-  return String(n)
+function toggleSave() {
+  saved.value = favorites.toggle(props.drama.id)
 }
 </script>
 
 <template>
-  <router-link class="card" :to="{ name: 'detail', params: { id: drama.id } }">
-    <div class="thumb">
-      <img :src="drama.cover" :alt="drama.title" loading="lazy" decoding="async" />
-      <span v-if="drama.hd" class="hd">HD</span>
-      <span class="dur">{{ drama.status === 'completed' ? '全' : '更至' }}{{ drama.episodeCount }}集</span>
-    </div>
-    <div class="title" :title="drama.title">{{ drama.title }}</div>
-    <div class="meta">
-      <span>{{ formatViews(drama.views) }}次播放</span>
-      <template v-if="drama.rating != null">
-        <span class="dot">·</span>
-        <span class="rating">
-          <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
-            <path
-              fill="currentColor"
-              d="M3 7h2.5v7H3zM6.5 14V7.2L9.3 1.5c.9 0 1.6.8 1.4 1.7L10.2 6H14a1.5 1.5 0 0 1 1.4 2l-1.7 5A1.5 1.5 0 0 1 12.3 14z"
-            />
+  <div class="drama-card">
+    <div class="card-poster">
+      <router-link
+        class="poster-link"
+        :to="{ name: 'detail', params: { id: drama.id } }"
+        :aria-label="tr(`查看${drama.title}`, `View ${drama.title}`)"
+      >
+        <CoverImage
+          :src="drama.cover"
+          :alt="drama.title"
+          loading="lazy"
+          decoding="async"
+          width="300"
+          height="400"
+        />
+      </router-link>
+      <span v-if="rank" class="rank-number" :class="{ top: rank <= 3 }">{{ rank }}</span>
+      <span class="episode-flag">{{ episodeText }}</span>
+      <div class="card-actions">
+        <router-link
+          v-if="hasEpisodes"
+          class="play-button"
+          :to="{ name: 'play', params: { id: drama.id } }"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true"><path fill="currentColor" d="M9 5v14l11-7z" /></svg>
+          {{ tr('立即播放', 'Play Now') }}
+        </router-link>
+        <span v-else class="play-button disabled">{{ tr('待更新', 'Coming soon') }}</span>
+        <button
+          class="fav-button"
+          :class="{ saved }"
+          type="button"
+          :aria-label="saved ? tr('取消收藏', 'Remove from list') : tr('收藏', 'Save')"
+          :aria-pressed="saved"
+          @click="toggleSave"
+        >
+          <svg viewBox="0 0 24 24" aria-hidden="true">
+            <path d="M7 4h10a1 1 0 0 1 1 1v15l-6-4-6 4V5a1 1 0 0 1 1-1z" />
           </svg>
-          {{ drama.rating }}%
-        </span>
-      </template>
+        </button>
+      </div>
     </div>
-  </router-link>
+    <div class="card-content">
+      <router-link
+        class="card-title"
+        :to="{ name: 'detail', params: { id: drama.id } }"
+        :title="drama.title"
+        >{{ drama.title }}</router-link
+      >
+      <div class="card-tags">
+        <span v-for="tag in drama.tags?.slice(0, 2)" :key="tag">{{ tag }}</span>
+        <span v-if="!drama.tags?.length">{{ tr('精选短剧', 'Featured') }}</span>
+      </div>
+    </div>
+  </div>
 </template>
 
 <style scoped>
-.card {
-  display: block;
-  color: var(--fg);
+.drama-card {
+  min-width: 0;
 }
-.thumb {
+.card-poster {
   position: relative;
-  aspect-ratio: 16 / 9;
-  border-radius: var(--radius);
+  display: block;
+  aspect-ratio: 3 / 4;
   overflow: hidden;
-  background: var(--bg-2);
+  border-radius: var(--radius);
+  background: #202020;
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.04);
 }
-.thumb img {
+.poster-link {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.card-poster img {
   width: 100%;
   height: 100%;
   object-fit: cover;
-  transition: transform 0.3s ease;
+  transition: transform 0.35s ease;
 }
-.card:hover .thumb img {
+.drama-card:hover .card-poster img {
   transform: scale(1.04);
 }
-.hd,
-.dur {
+.episode-flag {
   position: absolute;
-  bottom: 6px;
-  font-size: 11px;
-  font-weight: 700;
-  line-height: 1;
-  padding: 3px 5px;
-  border-radius: 2px;
-}
-.hd {
-  left: 6px;
-  background: var(--accent);
-  color: var(--accent-fg);
-}
-.dur {
   right: 6px;
-  background: rgba(0, 0, 0, 0.75);
+  bottom: 6px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.66);
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 11px;
+  line-height: 16px;
+  backdrop-filter: blur(4px);
+}
+.rank-number {
+  position: absolute;
+  top: 0;
+  left: 0;
+  padding: 2px 9px 4px;
+  border-bottom-right-radius: 6px;
+  background: rgba(0, 0, 0, 0.6);
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  font-style: italic;
+  line-height: 1.1;
+}
+.rank-number.top {
+  background: var(--accent);
+}
+/* 悬停时从底部升起播放条 */
+.card-actions {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  gap: 6px;
+  padding: 10px;
+  background: linear-gradient(0deg, rgba(0, 0, 0, 0.82), transparent);
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 0.22s, transform 0.22s;
+}
+.drama-card:hover .card-actions,
+.drama-card:focus-within .card-actions {
+  opacity: 1;
+  transform: none;
+}
+.play-button {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  height: 30px;
+  border-radius: 5px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+}
+.play-button svg {
+  width: 13px;
+  height: 13px;
+}
+.play-button:hover {
+  background: var(--accent-hover);
+}
+.play-button.disabled {
+  background: #3a3a3a;
+  cursor: default;
+}
+.fav-button {
+  display: grid;
+  place-content: center;
+  width: 34px;
+  height: 30px;
+  border-radius: 5px;
+  background: #3a3a3a;
   color: #fff;
 }
-.title {
-  margin-top: 8px;
-  font-size: 15px;
-  line-height: 1.35;
+.fav-button svg {
+  width: 15px;
+  height: 15px;
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.8;
+}
+.fav-button:hover {
+  background: #4a4a4a;
+}
+.fav-button.saved {
+  color: var(--accent);
+}
+.fav-button.saved svg {
+  fill: currentColor;
+}
+.card-content {
+  padding-top: 8px;
+}
+.card-title {
   display: -webkit-box;
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+  color: #fff;
+  font-size: 16px;
+  font-weight: 600;
+  line-height: 1.35;
 }
-.card:hover .title {
+.card-title:hover {
   color: var(--accent);
 }
-.meta {
+.card-tags {
   display: flex;
-  align-items: center;
-  gap: 5px;
-  margin-top: 4px;
-  font-size: 13px;
-  color: var(--fg-2);
+  flex-wrap: wrap;
+  gap: 0 4px;
+  margin-top: 5px;
+  overflow: hidden;
+  color: rgba(255, 255, 255, 0.4);
+  font-size: 12px;
+  line-height: 1.5;
   white-space: nowrap;
 }
-@media (min-width: 960px) {
-  .title {
-    font-size: 16px;
-  }
-  .meta {
+.card-tags span:not(:last-child)::after {
+  content: ' ⦁';
+}
+@media (max-width: 768px) {
+  .card-title {
     font-size: 14px;
   }
-  .hd,
-  .dur {
-    font-size: 12px;
-    padding: 4px 6px;
+  .card-actions {
+    display: none;
   }
-}
-@media (min-width: 1600px) {
-  .title {
-    margin-top: 10px;
-    font-size: 17px;
+  .episode-flag {
+    font-size: 10px;
   }
-  .meta {
-    font-size: 15px;
-  }
-  .hd,
-  .dur {
-    font-size: 13px;
-  }
-}
-.dot {
-  color: var(--fg-3);
-}
-.rating {
-  display: inline-flex;
-  align-items: center;
-  gap: 3px;
 }
 </style>
