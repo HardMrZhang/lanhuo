@@ -17,6 +17,17 @@ const DIST_DIR = path.join(ROOT, 'dist')
 const PORT = Number(process.env.PORT) || 3001
 const isProd = process.env.NODE_ENV === 'production'
 
+// 封面 URL 版本号：封面路径曾返回过 404 HTML，而响应头带 immutable 会被浏览器长期缓存，
+// 加版本参数让 URL 变化，强制浏览器与 CDN 重新拉取真实图片。
+const POSTER_VERSION = process.env.POSTER_VERSION || 'v2'
+const POSTER_PATH_RE = /^\/posters\/imported\/local-[a-f0-9]{16}\.jpg$/
+
+/** 给本地封面路径追加版本参数（已带参数的保持不变）。 */
+function versionedCover(cover) {
+  if (typeof cover !== 'string' || !POSTER_PATH_RE.test(cover)) return cover
+  return `${cover}?v=${POSTER_VERSION}`
+}
+
 const app = express()
 app.disable('x-powered-by')
 app.use(compression({ filter: (req, res) => !/\.(ts|m4s|mp4)$/.test(req.path) && compression.filter(req, res) }))
@@ -63,15 +74,16 @@ watchData(() => {
 
 const toSummary = (d) => {
   const { episodes, ...rest } = d
-  return { ...rest, episodeCount: episodes.length }
+  return { ...rest, cover: versionedCover(rest.cover), episodeCount: episodes.length }
 }
 
 /** 未开通会员时不下发付费集的播放地址。 */
 const toDetail = (d, isVip) => {
-  if (isVip) return d
+  const base = { ...d, cover: versionedCover(d.cover) }
+  if (isVip) return base
   return {
-    ...d,
-    episodes: d.episodes.map((episode) =>
+    ...base,
+    episodes: base.episodes.map((episode) =>
       isEpisodeLocked(episode.no) ? { ...episode, src: '' } : episode,
     ),
   }

@@ -37,14 +37,16 @@ export function posterContentType(file) {
 /**
  * 私有桶封面中转：GET /s3-posters/:file
  * - 封面与 HLS 同桶，桶策略禁止公开，故走服务端 GetObject 中转。
- * - 封面非付费内容，公开可访问，长缓存（内容不可变）。
+ * - 带 ?v= 版本号的请求：内容不可变，长缓存。
+ * - 不带版本号的请求：强制回源校验，避免历史 404 响应被浏览器长期缓存。
  */
 export function createS3PosterHandler() {
   return async (req, res, next) => {
     try {
       const key = posterKeyOf(req.params)
       if (!key) return res.status(404).json({ error: 'not found' })
-      res.set('Cache-Control', 'public, max-age=31536000, immutable')
+      const versioned = typeof req.query?.v === 'string' && req.query.v.length > 0
+      res.set('Cache-Control', versioned ? 'public, max-age=31536000, immutable' : 'public, max-age=0, must-revalidate')
       res.set('Content-Type', posterContentType(req.params.file))
       res.set('Accept-Ranges', 'bytes')
 
