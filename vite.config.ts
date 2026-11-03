@@ -10,6 +10,8 @@ export default defineConfig({
       '/api': 'http://localhost:3001',
       '/media': 'http://localhost:3001',
       '/s3-hls': 'http://localhost:3001',
+      '/posters': 'http://localhost:3001',
+      '/s3-posters': 'http://localhost:3001',
     },
   },
   build: {

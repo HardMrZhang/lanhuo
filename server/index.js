@@ -7,6 +7,7 @@ import { loadData, watchData } from './data.js'
 import { createDramaPool, loadDramasFromMysql } from './dramas-db.js'
 import { createVipRouter } from './vip.js'
 import { createS3HlsHandler } from './s3hls.js'
+import { createS3PosterHandler } from './s3posters.js'
 import { FREE_EPISODES, isEpisodeLocked, lockedMediaPaths } from './access.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
@@ -132,6 +133,12 @@ app.use('/api', (_req, res) => res.status(404).json({ error: '接口不存在' }
 // 组织 SCP 禁止公开桶策略，直链 S3 会 403；改走服务端 GetObject 中转，前端播 /s3-hls/...。
 // 付费集（第 2 集起）同样要求有效 VIP 会员，和 /media 策略一致。
 app.get('/s3-hls/:id/:ep/:file', createS3HlsHandler({ isEpisodeLocked, checkVip: (req) => vip.isVip(req) }))
+
+// ---------- S3 私有桶封面中转 ----------
+// 封面同在 HLS 私有桶里（组织 SCP 禁公开），走服务端 GetObject 中转。
+// 前端封面地址形如 /posters/imported/<dramaId>.jpg（与本地静态路径一致，无需改数据）。
+app.get('/posters/imported/:file', createS3PosterHandler())
+app.get('/s3-posters/:file', createS3PosterHandler())
 
 // ---------- 媒体文件 ----------
 // express.static 原生支持 Range 请求（拖动进度条、分段加载），HLS 分片设长缓存。
