@@ -9,6 +9,9 @@ import { createVipRouter } from '../server/vip.js'
 
 const SECRET = 'test-ipn-secret-not-for-production'
 const ORIGIN = 'https://vip.example.test'
+// 测试用固定验证码：答案恒为 TESTCAPTCHA，便于构造合法请求。
+const TEST_CAPTCHA = { enabled: true, issue: () => ({ text: 'TESTCAPTCHA', svg: '<svg/>' }) }
+const CAPTCHA_BODY = { captchaId: 'test-captcha', captchaText: 'TESTCAPTCHA' }
 function sorted(value) {
   if (Array.isArray(value)) return value.map(sorted)
   if (value && typeof value === 'object') {
@@ -41,7 +44,7 @@ async function fixture(t, overrides = {}) {
     providerPayments.push({ ...body, id })
     return new Response(JSON.stringify({ payment_id: id, payment_status: 'waiting', pay_address: 'T' + '1'.repeat(33), pay_amount: body.pay_amount, pay_currency: body.pay_currency, price_amount: body.price_amount, price_currency: body.price_currency, order_id: body.order_id, expiration_estimate_date: new Date(timestamp + 7 * 86400000).toISOString() }), { status: 201 })
   })
-  let router = await createVipRouter({ env, fetchImpl, now: () => timestamp })
+  let router = await createVipRouter({ env, fetchImpl, now: () => timestamp, captcha: TEST_CAPTCHA })
   async function listen() {
     const app = express()
     app.use('/api', router)
@@ -58,7 +61,7 @@ async function fixture(t, overrides = {}) {
   async function restart() {
     await new Promise((resolve) => server.close(resolve))
     await router.close()
-    router = await createVipRouter({ env, fetchImpl, now: () => timestamp })
+    router = await createVipRouter({ env, fetchImpl, now: () => timestamp, captcha: TEST_CAPTCHA })
     server = await listen()
     base = `http://127.0.0.1:${server.address().port}/api`
   }
@@ -76,8 +79,15 @@ async function fixture(t, overrides = {}) {
     const json = await response.json()
     return { status: response.status, body: json, headers: response.headers }
   }
+  /** 申请一张真实验证码：id 必须与答案成对，答案固定为 TESTCAPTCHA。 */
+  async function captchaBody() {
+    const res = await request('/auth/captcha')
+    assert.equal(res.status, 200, JSON.stringify(res.body))
+    assert.ok(res.body.id)
+    return { captchaId: res.body.id, captchaText: 'TESTCAPTCHA' }
+  }
   async function register(email = `${randomUUID()}@example.test`) {
-    const res = await request('/auth/register', { method: 'POST', body: { email, password: 'Correct-Horse-972!' } })
+    const res = await request('/auth/register', { method: 'POST', body: { email, password: 'Correct-Horse-972!', ...(await captchaBody()) } })
     assert.equal(res.status, 201, JSON.stringify(res.body))
     const cookie = res.headers.get('set-cookie')?.split(';')[0]
     assert.ok(cookie)
@@ -99,7 +109,7 @@ async function fixture(t, overrides = {}) {
   async function ipn(payload, signature = sign(payload)) {
     return request('/payments/nowpayments/ipn', { method: 'POST', body: payload, headers: { 'x-nowpayments-sig': signature } })
   }
-  return { restart, request, register, createOrder, payment, ipn, providerPayments, setTime: (value) => { timestamp = value } }
+  return { restart, request, register, createOrder, payment, ipn, providerPayments, captchaBody, setTime: (value) => { timestamp = value } }
 }
 
 test('accounts use server sessions, reject bad passwords and invalidate logout', async (t) => {
@@ -122,7 +132,7 @@ test('accounts use server sessions, reject bad passwords and invalidate logout',
 test('cross-site mutations and unauthenticated orders are rejected', async (t) => {
   const f = await fixture(t)
   const evil = await f.request('/auth/register', {
-    method: 'POST', body: { email: 'evil@example.test', password: 'Correct-Horse-972!' }, headers: { Origin: 'https://evil.example' },
+    method: 'POST', body: { email: 'evil@example.test', password: 'Correct-Horse-972!', ...(await f.captchaBody()) }, headers: { Origin: 'https://evil.example' },
   })
   assert.equal(evil.status, 403)
   assert.equal((await f.createOrder(undefined)).status, 401)

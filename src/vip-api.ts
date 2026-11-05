@@ -3,6 +3,7 @@ export interface AccountUser {
   email: string
   vipActive: boolean
   vipExpiresAt: string | null
+  emailVerified: boolean
 }
 
 export interface VipPlan {
@@ -45,8 +46,21 @@ export interface VipCatalog {
   payment: { providers: VipProvider[]; enabled: boolean; currencies: string[]; network: string }
 }
 
+/** 服务端下发的账号能力开关，前端据此决定是否显示验证码/找回密码等入口。 */
+export interface AuthCapabilities {
+  captcha: boolean
+  passwordReset: boolean
+  emailVerification: boolean
+}
+
+export interface CaptchaChallenge {
+  id: string | null
+  svg: string | null
+  required: boolean
+}
+
 export class AccountApiError extends Error {
-  constructor(message: string, public status: number) {
+  constructor(message: string, public status: number, public payload: Record<string, unknown> | null = null) {
     super(message)
   }
 }
@@ -65,7 +79,7 @@ export async function accountRequest<T>(path: string, options: RequestInit = {})
     const payload = await response.json().catch(() => null)
     if (!response.ok) {
       const message = typeof payload?.error === 'string' ? payload.error : typeof payload?.message === 'string' ? payload.message : '请求失败，请稍后重试。'
-      throw new AccountApiError(message, response.status)
+      throw new AccountApiError(message, response.status, payload && typeof payload === 'object' ? payload : null)
     }
     if (!payload) throw new Error('服务暂时不可用，请稍后重试。')
     return payload as T
@@ -87,5 +101,26 @@ export const vipApi = {
     method: 'POST',
     headers: { 'Idempotency-Key': key },
     body: JSON.stringify(provider ? { planId, provider } : { planId }),
+  }),
+}
+
+export const authApi = {
+  capabilities: () => accountRequest<AuthCapabilities>('/auth/providers'),
+  captcha: () => accountRequest<CaptchaChallenge>('/auth/captcha'),
+  verifyEmail: (token: string) => accountRequest<{ verified: boolean }>('/auth/verify-email', {
+    method: 'POST',
+    body: JSON.stringify({ token }),
+  }),
+  resendVerification: (lang: string) => accountRequest<{ sent: boolean; alreadyVerified?: boolean }>('/auth/resend-verification', {
+    method: 'POST',
+    body: JSON.stringify({ lang }),
+  }),
+  forgotPassword: (email: string, lang: string, captcha?: { id: string; text: string }) => accountRequest<{ sent: boolean }>('/auth/password/forgot', {
+    method: 'POST',
+    body: JSON.stringify({ email, lang, ...(captcha ?? {}) }),
+  }),
+  resetPassword: (token: string, password: string) => accountRequest<{ reset: boolean }>('/auth/password/reset', {
+    method: 'POST',
+    body: JSON.stringify({ token, password }),
   }),
 }

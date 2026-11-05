@@ -2,6 +2,8 @@ import express from 'express'
 import mysql from 'mysql2/promise'
 import { createHash, createHmac, randomBytes, randomUUID, scrypt, timingSafeEqual } from 'node:crypto'
 import { promisify } from 'node:util'
+import { createMailer, resetEmail, verificationEmail } from './mail.js'
+import { createCaptchaChallenge, normalizeCaptcha } from './captcha.js'
 
 const scryptAsync = promisify(scrypt)
 const DAY = 86_400_000
@@ -190,7 +192,12 @@ const numOrNull = (value) => (value === null || value === undefined ? null : Num
 
 function normalizeUser(row) {
   if (!row) return null
-  return { ...row, vip_expires_at: numOrNull(row.vip_expires_at), created_at: Number(row.created_at) }
+  return {
+    ...row,
+    vip_expires_at: numOrNull(row.vip_expires_at),
+    created_at: Number(row.created_at),
+    email_verified: row.email_verified === null || row.email_verified === undefined ? 1 : Number(row.email_verified),
+  }
 }
 
 function normalizeOrder(row) {
@@ -225,6 +232,27 @@ async function initSchema(pool) {
       password_hash VARCHAR(255) NOT NULL,
       vip_expires_at BIGINT NULL,
       created_at BIGINT NOT NULL
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin`)
+  // 邮箱验证状态：默认 1 让存量账号直接视为已验证；新注册时显式写入 0。
+  for (const sql of [
+    'ALTER TABLE vip_users ADD COLUMN email_verified TINYINT NOT NULL DEFAULT 1',
+  ]) {
+    try {
+      await pool.query(sql)
+    } catch (error) {
+      if (error?.code !== 'ER_DUP_FIELDNAME') throw error
+    }
+  }
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS vip_auth_tokens (
+      id CHAR(36) PRIMARY KEY,
+      user_id VARCHAR(36) NOT NULL,
+      kind VARCHAR(20) NOT NULL,
+      token_hash CHAR(64) NOT NULL UNIQUE,
+      expires_at BIGINT NOT NULL,
+      used_at BIGINT NULL,
+      created_at BIGINT NOT NULL,
+      CONSTRAINT fk_auth_tokens_user FOREIGN KEY (user_id) REFERENCES vip_users(id) ON DELETE CASCADE
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_bin`)
   await pool.query(`
     CREATE TABLE IF NOT EXISTS vip_sessions (
@@ -281,6 +309,8 @@ async function initSchema(pool) {
     'CREATE INDEX idx_sessions_expiry ON vip_sessions(expires_at)',
     'CREATE INDEX idx_orders_user_created ON vip_orders(user_id, created_at DESC)',
     'CREATE INDEX idx_nonces_created ON vip_vaehub_nonces(created_at)',
+    'CREATE INDEX idx_auth_tokens_user_kind ON vip_auth_tokens(user_id, kind)',
+    'CREATE INDEX idx_auth_tokens_expiry ON vip_auth_tokens(expires_at)',
   ]) {
     try {
       await pool.query(sql)
@@ -290,7 +320,10 @@ async function initSchema(pool) {
   }
 }
 
-export async function createVipRouter({ dbPath, pool: injectedPool, env = process.env, fetchImpl = globalThis.fetch, now = Date.now } = {}) {
+export async function createVipRouter({
+  dbPath, pool: injectedPool, env = process.env, fetchImpl = globalThis.fetch, now = Date.now,
+  mail: injectedMail, captcha: injectedCaptcha, logger = console,
+} = {}) {
   void dbPath
   const plans = loadPlans(env.VIP_PLANS_JSON)
   const production = env.NODE_ENV === 'production'
@@ -319,6 +352,14 @@ export async function createVipRouter({ dbPath, pool: injectedPool, env = proces
   const providers = []
   if (enabled) providers.push({ id: 'nowpayments', name: 'NOWPayments' })
   if (vaehub) providers.push({ id: 'vaehub', name: 'VaeHub' })
+  // 账号增强能力：邮件、图形验证码、第三方登录。三者都按配置自动启用/关闭。
+  const mail = injectedMail || createMailer(env, { logger })
+  const captcha = injectedCaptcha || { enabled: true, issue: createCaptchaChallenge }
+  const authOrigin = appOrigin || (env.APP_URL?.trim().replace(/\/+$/, '') || '')
+  // 邮件、找回密码链接需要可达的站点地址，缺失时无法发送带链接的邮件。
+  const mailLinksEnabled = mail.enabled && Boolean(authOrigin)
+  // AUTH_CAPTCHA=off 可关闭图形验证码（仅建议在开发或内网环境使用）。
+  const captchaRequired = env.AUTH_CAPTCHA !== 'off' && captcha.enabled !== false
   const dbConfig = mysqlConfig(env)
   if (!injectedPool) await ensureDatabase(dbConfig)
   const pool = injectedPool || mysql.createPool({
@@ -373,6 +414,8 @@ export async function createVipRouter({ dbPath, pool: injectedPool, env = proces
     id: user.id, email: user.email,
     vipActive: Boolean(user.vip_expires_at && user.vip_expires_at > now()),
     vipExpiresAt: user.vip_expires_at ? new Date(user.vip_expires_at).toISOString() : null,
+    // 老账号没有 email_verified 记录时按已验证处理，避免上线后老用户被锁。
+    emailVerified: Number(user.email_verified ?? 1) === 1,
   } : null
   const orderView = (order) => {
     const provider = order.provider === 'vaehub' ? 'vaehub' : 'nowpayments'
@@ -423,6 +466,14 @@ export async function createVipRouter({ dbPath, pool: injectedPool, env = proces
     next()
   }
   const requireUser = (req, res, next) => req.vipUser ? next() : res.status(401).json({ error: '请先登录' })
+  // 未验证邮箱的账号不能付费开通会员，避免用无法收信的邮箱下单。
+  const requireVerified = (req, res, next) => {
+    if (!req.vipUser) return res.status(401).json({ error: '请先登录' })
+    if (Number(req.vipUser.email_verified ?? 1) !== 1) {
+      return res.status(403).json({ error: '请先验证邮箱后再开通会员', needsVerification: true })
+    }
+    next()
+  }
   const asyncRoute = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
   const asyncMiddleware = (fn) => (req, res, next) => Promise.resolve(fn(req, res, next)).catch(next)
   const router = express.Router()
@@ -461,32 +512,168 @@ export async function createVipRouter({ dbPath, pool: injectedPool, env = proces
   router.use(express.json({ limit: '32kb', strict: true }))
   router.use(asyncMiddleware(async (req, _res, next) => { req.vipUser = await getUser(req); next() }))
 
+  // ---------- 图形验证码 ----------
+  // 答案只存哈希、短时有效，校验一次即失效，防止暴力枚举。
+  const captchaStore = new Map()
+  const CAPTCHA_TTL = 5 * 60_000
+  const purgeCaptchas = () => {
+    const time = now()
+    for (const [id, entry] of captchaStore) if (entry.expiresAt <= time) captchaStore.delete(id)
+  }
+  const issueCaptcha = () => {
+    purgeCaptchas()
+    const challenge = captcha.issue()
+    const id = randomBytes(16).toString('hex')
+    captchaStore.set(id, {
+      answerHash: createHash('sha256').update(normalizeCaptcha(challenge.text)).digest('hex'),
+      expiresAt: now() + CAPTCHA_TTL,
+    })
+    return { id, svg: Buffer.from(challenge.svg, 'utf8').toString('base64') }
+  }
+  const consumeCaptcha = (id, text) => {
+    if (!id || typeof id !== 'string' || typeof text !== 'string') return false
+    purgeCaptchas()
+    const entry = captchaStore.get(id)
+    if (!entry) return false
+    captchaStore.delete(id)
+    const given = createHash('sha256').update(normalizeCaptcha(text)).digest('hex')
+    return given.length === entry.answerHash.length && timingSafeEqual(Buffer.from(given, 'hex'), Buffer.from(entry.answerHash, 'hex'))
+  }
+  // 定期清理过期验证码，避免长时间空闲后 Map 持续膨胀。
+  const captchaTimer = setInterval(purgeCaptchas, 5 * 60_000)
+  captchaTimer.unref?.()
+  /** 从请求体取出验证码答案；缺失或错误时统一返回 400。 */
+  const requireCaptcha = (req, res) => {
+    if (!captchaRequired) return true
+    if (!consumeCaptcha(req.body?.captchaId, req.body?.captchaText)) {
+      res.status(400).json({ error: '请完成图形验证码', captchaRequired: true })
+      return false
+    }
+    return true
+  }
+
+  // ---------- 一次性令牌（邮箱验证 / 密码重置） ----------
+  const TOKEN_TTL = 30 * 60_000
+  const issueAuthToken = async (userId, kind) => {
+    const token = randomBytes(32).toString('hex')
+    const hash = createHash('sha256').update(token).digest('hex')
+    await run('DELETE FROM vip_auth_tokens WHERE user_id = ? AND kind = ?', userId, kind)
+    await run('INSERT INTO vip_auth_tokens (id, user_id, kind, token_hash, expires_at, created_at) VALUES (?, ?, ?, ?, ?, ?)',
+      randomUUID(), userId, kind, hash, now() + TOKEN_TTL, now())
+    return token
+  }
+  /** 令牌只能用一次；校验通过后在同一事务里标记已用。 */
+  const consumeAuthToken = async (token, kind) => {
+    if (typeof token !== 'string' || token.length < 16 || token.length > 128) return null
+    const hash = createHash('sha256').update(token).digest('hex')
+    return transaction(async ({ query: queryTx, run: runTx }) => {
+      const row = await queryTx('SELECT * FROM vip_auth_tokens WHERE token_hash = ? AND kind = ? FOR UPDATE', hash, kind)
+      if (!row || row.used_at !== null || Number(row.expires_at) <= now()) return null
+      await runTx('UPDATE vip_auth_tokens SET used_at = ? WHERE id = ?', now(), row.id)
+      return { userId: row.user_id }
+    })
+  }
+  const purgeAuthTokens = () => run('DELETE FROM vip_auth_tokens WHERE expires_at <= ?', now() - TOKEN_TTL).catch(() => {})
+
+  /** 登录失败计数：连续失败后要求图形验证码，抑制撞库。 */
+  const loginFailures = new Map()
+  const FAILURE_LIMIT = 3
+  const failureKey = (req, email) => `${req.ip}|${email}`
+  const noteLoginFailure = (req, email) => {
+    const key = failureKey(req, email)
+    const entry = loginFailures.get(key)
+    if (!entry || entry.reset <= now()) {
+      loginFailures.set(key, { count: 1, reset: now() + 15 * 60_000 })
+      return
+    }
+    entry.count++
+  }
+  const clearLoginFailures = (req, email) => loginFailures.delete(failureKey(req, email))
+  const loginNeedsCaptcha = (req, email) => {
+    const entry = loginFailures.get(failureKey(req, email))
+    return Boolean(entry && entry.reset > now() && entry.count >= FAILURE_LIMIT)
+  }
+  /** 定期清理过期的失败计数，避免长期运行时内存无限增长。 */
+  const purgeLoginFailures = () => {
+    const time = now()
+    for (const [key, entry] of loginFailures) if (entry.reset <= time) loginFailures.delete(key)
+  }
+  const loginFailureTimer = setInterval(purgeLoginFailures, 10 * 60_000)
+  loginFailureTimer.unref?.()
+
+  router.get('/auth/captcha', rateLimit('captcha', 60, 10 * 60_000), (_req, res) => {
+    if (!captchaRequired) return res.json({ id: null, svg: null, required: false })
+    const challenge = issueCaptcha()
+    return res.json({ id: challenge.id, svg: challenge.svg, required: true })
+  })
+
+  router.get('/auth/providers', (_req, res) => {
+    res.json({
+      captcha: captchaRequired,
+      // 只有 SMTP 与站点地址都就绪，邮件类能力才对外可用。
+      passwordReset: mailLinksEnabled,
+      emailVerification: mailLinksEnabled,
+    })
+  })
+
   router.post('/auth/register', rateLimit('auth', 15, 15 * 60_000), asyncRoute(async (req, res) => {
     const input = credentials(req.body)
     if (!input) return res.status(400).json({ error: '请输入有效邮箱及 8–128 位密码' })
+    if (!requireCaptcha(req, res)) return
     if (await query('SELECT id FROM vip_users WHERE email = ?', input.email)) return res.status(409).json({ error: '该邮箱已注册，请登录' })
     const passwordHash = await hashPassword(input.password)
     const id = randomUUID()
+    // 邮件不可用时不做邮箱验证，避免注册后无法登录。
+    const verificationRequired = mailLinksEnabled
     try {
-      await run('INSERT INTO vip_users (id, email, password_hash, created_at) VALUES (?, ?, ?, ?)', id, input.email, passwordHash, now())
+      await run('INSERT INTO vip_users (id, email, password_hash, email_verified, created_at) VALUES (?, ?, ?, ?, ?)',
+        id, input.email, passwordHash, verificationRequired ? 0 : 1, now())
     } catch (error) {
       if (error?.code === 'ER_DUP_ENTRY') return res.status(409).json({ error: '该邮箱已注册，请登录' })
       throw error
     }
+    let verificationSent = false
+    if (verificationRequired) {
+      try {
+        const token = await issueAuthToken(id, 'verify')
+        const url = `${authOrigin}/verify-email?token=${encodeURIComponent(token)}`
+        const message = verificationEmail({ email: input.email, url, lang: req.body?.lang === 'en' ? 'en' : 'zh' })
+        await mail.send({ to: input.email, subject: message.subject, html: message.html, text: message.text })
+        verificationSent = true
+      } catch (error) {
+        logger.error('[auth] verification email failed:', error?.message || error)
+        // 邮件发不出去时直接标记为已验证，否则用户会卡在无法登录的状态。
+        await run('UPDATE vip_users SET email_verified = 1 WHERE id = ?', id)
+      }
+    }
+    const user = normalizeUser(await query('SELECT * FROM vip_users WHERE id = ?', id))
     await issueSession(req, res, id)
-    return res.status(201).json({ user: userView(normalizeUser(await query('SELECT * FROM vip_users WHERE id = ?', id))) })
+    return res.status(201).json({
+      user: userView(user),
+      verificationSent,
+      needsVerification: Number(user?.email_verified) !== 1,
+    })
   }))
+
   router.post('/auth/login', rateLimit('auth', 15, 15 * 60_000), asyncRoute(async (req, res) => {
     const input = credentials(req.body)
     if (!input) return res.status(400).json({ error: '请输入有效邮箱及 8–128 位密码' })
+    if (loginNeedsCaptcha(req, input.email) && !requireCaptcha(req, res)) return
     const user = normalizeUser(await query('SELECT * FROM vip_users WHERE email = ?', input.email))
     // The dummy hash keeps unknown accounts on the same expensive verification path.
     const dummy = `${'0'.repeat(32)}:${'0'.repeat(128)}`
     const valid = await checkPassword(input.password, user?.password_hash || dummy)
-    if (!user || !valid) return res.status(401).json({ error: '邮箱或密码错误' })
+    if (!user || !valid) {
+      noteLoginFailure(req, input.email)
+      return res.status(401).json({ error: '邮箱或密码错误' })
+    }
+    clearLoginFailures(req, input.email)
     await issueSession(req, res, user.id)
-    return res.json({ user: userView(user) })
+    // 未验证邮箱允许登录，但开通会员等操作会被拦截，前端据此提示去查收邮件。
+    const needsVerification = Number(user.email_verified) !== 1
+    return res.json({ user: userView(user), needsVerification })
   }))
+
   router.post('/auth/logout', asyncRoute(async (req, res) => {
     const token = sessionToken(req)
     if (token) await run('DELETE FROM vip_sessions WHERE token_hash = ?', token)
@@ -494,10 +681,66 @@ export async function createVipRouter({ dbPath, pool: injectedPool, env = proces
     res.json({ user: null })
   }))
   router.get('/auth/me', (req, res) => res.json({ user: userView(req.vipUser) }))
+
+  // ---------- 邮箱验证 ----------
+  router.post('/auth/verify-email', rateLimit('auth', 20, 15 * 60_000), asyncRoute(async (req, res) => {
+    const consumed = await consumeAuthToken(req.body?.token, 'verify')
+    if (!consumed) return res.status(400).json({ error: '验证链接无效或已过期' })
+    await run('UPDATE vip_users SET email_verified = 1 WHERE id = ?', consumed.userId)
+    return res.json({ verified: true })
+  }))
+
+  router.post('/auth/resend-verification', requireUser, rateLimit('auth', 10, 15 * 60_000), asyncRoute(async (req, res) => {
+    if (Number(req.vipUser.email_verified) === 1) return res.json({ sent: false, alreadyVerified: true })
+    if (!mailLinksEnabled) return res.status(503).json({ error: '邮件服务暂未配置，请稍后再试' })
+    const token = await issueAuthToken(req.vipUser.id, 'verify')
+    const url = `${authOrigin}/verify-email?token=${encodeURIComponent(token)}`
+    const message = verificationEmail({ email: req.vipUser.email, url, lang: req.body?.lang === 'en' ? 'en' : 'zh' })
+    await mail.send({ to: req.vipUser.email, subject: message.subject, html: message.html, text: message.text })
+    return res.json({ sent: true })
+  }))
+
+  // ---------- 密码找回 ----------
+  router.post('/auth/password/forgot', rateLimit('auth', 10, 15 * 60_000), asyncRoute(async (req, res) => {
+    const email = typeof req.body?.email === 'string' ? req.body.email.trim().toLowerCase() : ''
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email) || email.length > 254) return res.status(400).json({ error: '请输入有效邮箱' })
+    if (!requireCaptcha(req, res)) return
+    // 无论邮箱是否存在都返回同样结果，避免探测账号。
+    const user = normalizeUser(await query('SELECT * FROM vip_users WHERE email = ?', email))
+    if (user && mailLinksEnabled) {
+      try {
+        const token = await issueAuthToken(user.id, 'reset')
+        const url = `${authOrigin}/reset-password?token=${encodeURIComponent(token)}`
+        const message = resetEmail({ email: user.email, url, lang: req.body?.lang === 'en' ? 'en' : 'zh' })
+        await mail.send({ to: user.email, subject: message.subject, html: message.html, text: message.text })
+      } catch (error) {
+        logger.error('[auth] reset email failed:', error?.message || error)
+      }
+    }
+    return res.json({ sent: true })
+  }))
+
+  router.post('/auth/password/reset', rateLimit('auth', 15, 15 * 60_000), asyncRoute(async (req, res) => {
+    const password = req.body?.password
+    if (typeof password !== 'string' || password.length < 8 || password.length > 128) {
+      return res.status(400).json({ error: '请输入 8–128 位密码' })
+    }
+    const consumed = await consumeAuthToken(req.body?.token, 'reset')
+    if (!consumed) return res.status(400).json({ error: '重置链接无效或已过期' })
+    const passwordHash = await hashPassword(password)
+    await transaction(async ({ run: runTx }) => {
+      await runTx('UPDATE vip_users SET password_hash = ? WHERE id = ?', passwordHash, consumed.userId)
+      // 改密后注销全部旧会话，强制重新登录。
+      await runTx('DELETE FROM vip_sessions WHERE user_id = ?', consumed.userId)
+    })
+    return res.json({ reset: true })
+  }))
+
   router.get('/vip/plans', (_req, res) => res.json({
     plans,
     payment: { providers, enabled: providers.length > 0, currencies: ['USDT'], network: 'TRON / TRC20' },
   }))
+  purgeAuthTokens()
 
   async function createNowpaymentsOrder({ order, plan, key }) {
     if (!enabled) throw Object.assign(new Error('加密货币支付暂未开放，请稍后再试'), { status: 503 })
@@ -571,7 +814,7 @@ export async function createVipRouter({ dbPath, pool: injectedPool, env = proces
     openId, Number(fiatAmount), vaehub.currency, checkoutUrl, qrString, qrExpires, expiresAt, order.id)
   }
 
-  router.post('/vip/orders', requireUser, rateLimit('orders', 10, 10 * 60_000), asyncRoute(async (req, res) => {
+  router.post('/vip/orders', requireVerified, rateLimit('orders', 10, 10 * 60_000), asyncRoute(async (req, res) => {
     const key = req.get('Idempotency-Key')
     if (!key || !/^[a-zA-Z0-9_-]{16,128}$/.test(key)) return res.status(400).json({ error: '缺少有效的 Idempotency-Key' })
     const existingRow = await query('SELECT * FROM vip_orders WHERE user_id = ? AND idempotency_key = ?', req.vipUser.id, key)

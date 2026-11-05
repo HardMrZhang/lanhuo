@@ -8,6 +8,9 @@ import express from 'express'
 import { createVipRouter } from '../server/vip.js'
 
 const ORIGIN = 'https://vip.example.test'
+// 测试用固定验证码：答案恒为 TESTCAPTCHA。
+const TEST_CAPTCHA = { enabled: true, issue: () => ({ text: 'TESTCAPTCHA', svg: '<svg/>' }) }
+const CAPTCHA_BODY = { captchaId: 'test-captcha', captchaText: 'TESTCAPTCHA' }
 const VAEHUB = {
   VAEHUB_API_BASE: 'https://pay.example.test/api/',
   VAEHUB_APP_TAG: 'project',
@@ -53,7 +56,7 @@ async function fixture(t, overrides = {}) {
       msg: 'Success', rid: 'v-test',
     }), { status: 201 })
   })
-  let router = await createVipRouter({ env, fetchImpl, now: () => timestamp })
+  let router = await createVipRouter({ env, fetchImpl, now: () => timestamp, captcha: TEST_CAPTCHA })
   const app = express()
   app.use('/api', router)
   const server = await new Promise((resolve) => {
@@ -89,12 +92,17 @@ async function fixture(t, overrides = {}) {
     })
     return { status: response.status, text: await response.text(), type: response.headers.get('content-type') }
   }
+  async function captchaBody() {
+    const res = await request('/auth/captcha')
+    assert.equal(res.status, 200, JSON.stringify(res.body))
+    return { captchaId: res.body.id, captchaText: 'TESTCAPTCHA' }
+  }
   async function register(email = `${randomUUID()}@example.test`) {
-    const res = await request('/auth/register', { method: 'POST', body: { email, password: 'Correct-Horse-972!' } })
+    const res = await request('/auth/register', { method: 'POST', body: { email, password: 'Correct-Horse-972!', ...(await captchaBody()) } })
     assert.equal(res.status, 201, JSON.stringify(res.body))
     return res.headers.get('set-cookie')?.split(';')[0]
   }
-  return { request, raw, register, calls, setTime: (value) => { timestamp = value } }
+  return { request, raw, register, calls, captchaBody, setTime: (value) => { timestamp = value } }
 }
 
 function notify(order, { status = 1, nonce = randomUUID().replace(/-/g, '').slice(0, 16), timestamp, key, secret } = {}) {

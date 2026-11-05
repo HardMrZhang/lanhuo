@@ -2,7 +2,7 @@
 import { computed, onMounted, ref, useId, watch } from 'vue'
 import { useRoute, type LocationQueryRaw } from 'vue-router'
 import { contentChannels } from '../navigation'
-import { account, refreshAccount } from '../account'
+import { account, refreshAccount, refreshCapabilities } from '../account'
 import AccountPanel from './AccountPanel.vue'
 import LanguageSwitcher from './LanguageSwitcher.vue'
 import { locale, tr } from '../i18n'
@@ -46,6 +46,7 @@ function openAccount() {
 
 onMounted(() => {
   void refreshAccount()
+  void refreshCapabilities()
 })
 
 watch(

@@ -11,6 +11,9 @@ import { createVipRouter } from '../server/vip.js'
 const ORIGIN = 'https://vip-security.example.test'
 const SECRET = 'isolated-security-test-secret'
 const TIMESTAMP = Date.parse('2026-09-18T08:00:00.000Z')
+// 测试用固定验证码：答案恒为 TESTCAPTCHA。
+const TEST_CAPTCHA = { enabled: true, issue: () => ({ text: 'TESTCAPTCHA', svg: '<svg/>' }) }
+const CAPTCHA_BODY = { captchaId: 'test-captcha', captchaText: 'TESTCAPTCHA' }
 
 function canonical(value) {
   if (Array.isArray(value)) return value.map(canonical)
@@ -56,7 +59,7 @@ async function setup(t, options = {}) {
   async function restart(changes = {}) {
     await close()
     Object.assign(env, changes)
-    router = await createVipRouter({ env, fetchImpl, now: () => TIMESTAMP })
+    router = await createVipRouter({ env, fetchImpl, now: () => TIMESTAMP, captcha: TEST_CAPTCHA })
     const app = express()
     app.use('/api', router)
     server = await new Promise((resolve) => {
@@ -87,7 +90,12 @@ async function setup(t, options = {}) {
       outgoing.end(body === undefined ? undefined : JSON.stringify(body))
     })
   }
-  const account = await request('/auth/register', { body: { email: `${randomUUID()}@example.test`, password: 'Security-Test-Password-983' } })
+  async function captchaBody() {
+    const res = await request('/auth/captcha')
+    assert.equal(res.status, 200, JSON.stringify(res.body))
+    return { captchaId: res.body.id, captchaText: 'TESTCAPTCHA' }
+  }
+  const account = await request('/auth/register', { body: { email: `${randomUUID()}@example.test`, password: 'Security-Test-Password-983', ...(await captchaBody()) } })
   assert.equal(account.status, 201)
   const cookie = account.headers.get('set-cookie').split(';')[0]
   const create = (planId = 'month', key = randomUUID()) => request('/vip/orders', { cookie, body: { planId }, headers: { 'Idempotency-Key': key } })
@@ -106,7 +114,7 @@ async function setup(t, options = {}) {
     const signature = createHmac('sha512', SECRET).update(JSON.stringify(canonical(payload))).digest('hex')
     return request('/payments/nowpayments/ipn', { body: payload, headers: { 'x-nowpayments-sig': signature } })
   }
-  return { request, account, create, user, getOrder, event, callback, restart, override: (value) => { responseOverride = value } }
+  return { request, account, create, user, getOrder, event, callback, restart, captchaBody, override: (value) => { responseOverride = value } }
 }
 
 test('production auth works without payment configuration and still rejects cross-site requests', async (t) => {
@@ -118,7 +126,7 @@ test('production auth works without payment configuration and still rejects cros
   assert.match(f.account.headers.get('set-cookie'), /; Secure(?:;|$)/)
   assert.match(f.account.headers.get('set-cookie'), /; HttpOnly(?:;|$)/)
   assert.equal((await f.request('/vip/plans')).body.payment.enabled, false)
-  const body = { email: 'cross-site@example.test', password: 'Security-Test-Password-983' }
+  const body = { email: 'cross-site@example.test', password: 'Security-Test-Password-983', ...(await f.captchaBody()) }
   assert.equal((await f.request('/auth/register', { body, headers: { Origin: 'https://evil.example' } })).status, 403)
   assert.equal((await f.request('/auth/register', { body, headers: { 'Sec-Fetch-Site': 'cross-site' } })).status, 403)
 })

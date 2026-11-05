@@ -26,3 +26,4 @@ public/posters/
 data/local-cover-sources.json
 data/local-import-manifest.json
 data/local-import-report.json
+data/video-import-map.json

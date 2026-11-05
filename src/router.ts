@@ -5,6 +5,8 @@ export const router = createRouter({
   routes: [
     { path: '/', name: 'home', component: () => import('./views/Home.vue') },
     { path: '/vip', name: 'vip', component: () => import('./views/Vip.vue') },
+    { path: '/verify-email', name: 'verify-email', component: () => import('./views/VerifyEmail.vue') },
+    { path: '/reset-password', name: 'reset-password', component: () => import('./views/ResetPassword.vue') },
     {
       path: '/drama/:id',
       name: 'detail',

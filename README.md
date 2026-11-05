@@ -10,7 +10,7 @@
 
 ## 快速开始
 
-需要 Node.js 22.13 或更新版本（会员数据使用 Node 内置 SQLite）。
+需要 Node.js 22.13 或更新版本（会员数据使用 MySQL）。
 
 ```bash
 npm install
@@ -42,9 +42,17 @@ npm start          # 后端同时托管 dist/ ，访问 http://localhost:3001
 
 ### 数据与运行
 
-会员账号、密码哈希、会话、订单和会员到期时间保存在 `data/vip.sqlite`，可用 `VIP_DB_FILE` 指定持久化卷位置。SQLite 使用事务保证同一订单只增加一次会员天数。请保留该数据库，使用 SQLite 备份工具，或停服后连同 `-wal` / `-shm` 文件一起备份；不可在部署时删除。当前部署使用单个 Node 实例，限流在进程内实现。
+会员账号、密码哈希、会话、订单和会员到期时间保存在 MySQL 的 `vip_users` / `vip_sessions` / `vip_orders` 表中，可用 `MYSQL_*` 环境变量指定连接。建表在服务启动时自动完成（`CREATE TABLE IF NOT EXISTS`），旧库会自动补齐新字段。密码使用 scrypt 加盐哈希，会话为 HttpOnly Cookie 中的随机 token（数据库只存 SHA-256 哈希），生产环境要求 HTTPS。
 
-登录使用 HttpOnly Cookie，生产环境要求 HTTPS。邮箱用于登录标识，当前没有邮箱验证或找回密码流程。会员模块记录充值权益与有效期。付费规则为每部剧第 1 集免费、第 2 集起需要有效会员：`/api/dramas/:id` 对非会员不下发付费集播放地址，`/media` 下对应的付费集文件也会返回 403，因此直接分享地址无法绕过。退款/异常支付需运营者核对，系统不会自动撤销已经发放的会员天数。
+### 账号增强能力
+
+以下能力全部按配置自动启用，未配置时对应入口在界面上隐藏，不影响邮箱注册登录：
+
+- **图形验证码**：注册、找回密码必须填写；同一 IP + 邮箱连续登录失败 3 次后，登录也要求验证码（抑制撞库）。答案只存哈希、5 分钟过期、校验一次即失效。`AUTH_CAPTCHA=off` 可关闭，仅建议开发/内网环境使用。
+- **邮箱验证**：配置 SMTP 后注册即需验证邮箱，未验证的账号可以登录但**不能开通会员**（下单接口返回 403）。验证链接 30 分钟有效且只能使用一次；邮件发送失败时自动标记为已验证，避免用户卡在无法登录的状态。账号面板提供「重新发送验证邮件」。
+- **密码找回**：输入邮箱后发送一次性重置链接（30 分钟有效）。无论邮箱是否存在都返回相同结果，避免探测账号；重置成功后注销该账号的全部旧会话，强制重新登录。
+
+配置项见 `.env.example` 的「账号增强能力」段：`SMTP_*` / `MAIL_FROM`。目前仅支持邮箱 + 密码登录注册，未接入第三方登录。
 
 ```bash
 npm test           # 导入回归测试 + 会员/支付安全与幂等测试
@@ -128,6 +136,28 @@ npm run hls -- 输入.mp4 media/剧id/ep01
 1. 复制 `.env.example` 为 `.env`，填写 `S3_BUCKET / AWS_REGION / S3_PREFIX`（脚本自动加载 `.env`，命令行显式传参优先）。
 2. `aws configure` 配好 Access Key（密钥只放 `~/.aws/credentials`，不进项目）。
 3. 转码并上传：`bash scripts/batch-hls-upload-s3.sh`；把 `data/dramas.json` 的 src 批量指向 S3：`node scripts/point-dramas-to-s3.mjs --apply`。
+
+### py_project/video 增量导入
+
+适用于 `/Users/zhangchaoyin/zhangzhaoyin/py_project/video` 这类「剧目录 / 第0NN集.mp4」结构的片库。整条流水线按顺序执行，每步都可重复运行，已完成的会自动跳过：
+
+```bash
+npm run video:map         # 扫描目录 -> data/video-import-map.json（不入库，可重新生成）
+npm run video:transcode   # 缺失的集转 HLS -> hls-output/<dramaId>/episode-<no>/
+npm run video:covers      # 为新剧抽封面 -> public/posters/imported/<dramaId>.jpg
+npm run video:s3          # HLS 与封面上传到 S3（只传远端缺失的）
+npm run video:db          # 写入 MySQL 并合并 data/dramas.json
+```
+
+规则：
+
+- **剧 ID**：剧名能匹配现有库存则复用原 `drama.id`，否则新建 `local-<sha256[:16]>`。重复剧只更新集数 / 封面 / 简介，不产生第二条记录。
+- **集数并集**：`video/` 目录只有部分集时，保留原有库存里更多的集（例：`Accident with my Stepmom` 原有 10 集来自 `py_project/download`）。
+- **播放地址**：`/s3-hls/<dramaId>/episode-<no>/index.m3u8`，走服务端私有桶中转；只有本地已产出 `index.m3u8` 的集才写地址。
+- **元数据**：简介取 `all_series.csv` 的 `description`，剧集清单取 `all_episodes.csv` 里状态为 `downloaded` / `already_downloaded` 的集。
+- **码率档位**：按源视频短边封顶 1080 / 720 / 480，绝不放大。
+
+`npm run video:db` 需要 MySQL 凭据（`MYSQL_*`），未加载 `.env` 会报 `Access denied`。若本机 Node 18 不支持 `--env-file-if-exists`，用 `set -a && . ./.env && set +a` 手动导出。
 
 ## 流畅播放做了什么
 

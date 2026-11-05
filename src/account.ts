@@ -1,12 +1,19 @@
 import { reactive, readonly } from 'vue'
-import { accountRequest, type AccountUser } from './vip-api'
+import { accountRequest, authApi, type AccountUser, type AuthCapabilities } from './vip-api'
 
-const state = reactive<{ user: AccountUser | null; status: 'loading' | 'ready' | 'error'; error: string }>({
+const state = reactive<{
+  user: AccountUser | null
+  status: 'loading' | 'ready' | 'error'
+  error: string
+  capabilities: AuthCapabilities | null
+}>({
   user: null,
   status: 'loading',
   error: '',
+  capabilities: null,
 })
 export const account = readonly(state)
+
 let refresh: Promise<void> | null = null
 let revision = 0
 
@@ -35,12 +42,27 @@ export function refreshAccount() {
   return refresh
 }
 
-export async function authenticate(mode: 'login' | 'register', email: string, password: string) {
+/** 账号能力开关只影响 UI 展示，失败时静默降级到「仅邮箱登录」。 */
+export async function refreshCapabilities() {
+  try {
+    state.capabilities = await authApi.capabilities()
+  } catch {
+    state.capabilities = null
+  }
+}
+
+export async function authenticate(
+  mode: 'login' | 'register',
+  email: string,
+  password: string,
+  captcha?: { id: string; text: string },
+) {
   const { user } = await accountRequest<{ user: AccountUser }>(`/auth/${mode}`, {
     method: 'POST',
-    body: JSON.stringify({ email: email.trim(), password }),
+    body: JSON.stringify({ email: email.trim(), password, ...(captcha ?? {}) }),
   })
   updateAccount(user)
+  return user
 }
 
 export async function logout() {
