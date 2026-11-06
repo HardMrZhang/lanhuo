@@ -22,6 +22,11 @@ hls-transcode.log
 public/posters/
 !public/favicon.svg
 
+# 去水印工具的本地 Python 环境
+.venv-wm/
+__pycache__/
+*.pyc
+
 # 本地导入中间产物（自动生成，可重跑）
 data/local-cover-sources.json
 data/local-import-manifest.json

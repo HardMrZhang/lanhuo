@@ -144,7 +144,9 @@ app.use('/api', (_req, res) => res.status(404).json({ error: '接口不存在' }
 // ---------- S3 私有桶 HLS 中转 ----------
 // 组织 SCP 禁止公开桶策略，直链 S3 会 403；改走服务端 GetObject 中转，前端播 /s3-hls/...。
 // 付费集（第 2 集起）同样要求有效 VIP 会员，和 /media 策略一致。
+// 多码率 HLS 的档位子目录（720p/480p/1080p）走 /s3-hls/:id/:ep/:tier/:file。
 app.get('/s3-hls/:id/:ep/:file', createS3HlsHandler({ isEpisodeLocked, checkVip: (req) => vip.isVip(req) }))
+app.get('/s3-hls/:id/:ep/:tier/:file', createS3HlsHandler({ isEpisodeLocked, checkVip: (req) => vip.isVip(req) }))
 
 // ---------- S3 私有桶封面中转 ----------
 // 封面同在 HLS 私有桶里（组织 SCP 禁公开），走服务端 GetObject 中转。

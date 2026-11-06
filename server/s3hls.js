@@ -23,10 +23,23 @@ const s3 = new S3Client({
 const DRAMA_RE = /^local-[a-f0-9]{16}$/
 const EP_RE = /^episode-(\d+)$/
 const FILE_RE = /^(index\.m3u8|seg_\d+\.ts)$/
+// 多码率 HLS 的档位子目录：<ep>/720p/seg_0000.ts
+const TIER_RE = /^(1080p|720p|480p)$/
 
+/**
+ * 生成 S3 object key。
+ *
+ * 支持两种结构：
+ *   - 单档：  <PREFIX>/<id>/<ep>/<file>
+ *   - 多码率：<PREFIX>/<id>/<ep>/<tier>/<file>
+ */
 export function s3KeyOf(params) {
-  const { id, ep, file } = params
+  const { id, ep, file, tier } = params
   if (!DRAMA_RE.test(id) || !EP_RE.test(ep) || !FILE_RE.test(file)) return null
+  if (tier) {
+    if (!TIER_RE.test(tier)) return null
+    return `${PREFIX}/${id}/${ep}/${tier}/${file}`
+  }
   return `${PREFIX}/${id}/${ep}/${file}`
 }
 
@@ -38,6 +51,7 @@ export function contentTypeOf(file) {
 
 /**
  * 私有桶中转：GET /s3-hls/:id/:ep/:file
+ *             GET /s3-hls/:id/:ep/:tier/:file   （多码率档位）
  * - 用服务端 IAM 凭证 GetObject，桶保持私有（组织 SCP 禁公开也能播）。
  * - 第 2 集起走 isVip 鉴权（调用方传入），与 /media 付费策略一致。
  */

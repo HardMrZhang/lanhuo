@@ -97,10 +97,18 @@ const displayList = computed(() => {
 })
 const featured = computed(() => {
   const playable = dramas.value.filter((drama) => drama.episodeCount > 0)
-  const picks = ['d001', 'd015', 'd029', 'd043', 'd071']
-    .map((id) => playable.find((d) => d.id === id))
-    .filter((d): d is DramaSummary => Boolean(d))
-  return [...picks, ...playable.filter((d) => !picks.includes(d))].slice(0, 7)
+  // 新下载的欧美剧优先：集数多优先，其次按上架时间倒序、播放量倒序，取 7 部上轮播。
+  const western = playable
+    .filter((drama) => drama.channelId === 'western')
+    .sort(
+      (a, b) =>
+        b.episodeCount - a.episodeCount ||
+        (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '') ||
+        (b.views ?? 0) - (a.views ?? 0),
+    )
+    .slice(0, 7)
+  if (western.length) return western
+  return playable.slice(0, 7)
 })
 const ranking = computed(() =>
   [...dramas.value].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)).slice(0, 15),

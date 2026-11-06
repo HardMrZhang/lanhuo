@@ -1,5 +1,5 @@
 import { reactive, readonly } from 'vue'
-import { accountRequest, authApi, type AccountUser, type AuthCapabilities } from './vip-api'
+import { accountRequest, authApi, type AccountUser, type AuthCapabilities, type CaptchaAnswer } from './vip-api'
 
 const state = reactive<{
   user: AccountUser | null
@@ -55,7 +55,7 @@ export async function authenticate(
   mode: 'login' | 'register',
   email: string,
   password: string,
-  captcha?: { id: string; text: string },
+  captcha?: CaptchaAnswer,
 ) {
   const { user } = await accountRequest<{ user: AccountUser }>(`/auth/${mode}`, {
     method: 'POST',

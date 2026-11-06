@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { ref, watch } from 'vue'
-import { authApi, type CaptchaChallenge } from '../vip-api'
+import { authApi, type CaptchaAnswer, type CaptchaChallenge } from '../vip-api'
 import { tr } from '../i18n'
 
 const props = withDefaults(defineProps<{ resetKey?: number }>(), { resetKey: 0 })
@@ -24,15 +24,15 @@ async function load() {
 watch(() => props.resetKey, () => { void load() }, { immediate: true })
 
 defineExpose({
-  /** 返回当前验证码答案；未启用验证码时返回 undefined。 */
-  value(): { id: string; text: string } | undefined {
+  /** 返回当前验证码答案；未启用验证码时返回 undefined。字段名与服务端校验约定一致。 */
+  value(): CaptchaAnswer | undefined {
     if (!challenge.value?.required || !challenge.value.id) return undefined
     const text = answer.value.trim()
     if (!text) {
       error.value = tr('请输入图形验证码', 'Enter the captcha code')
       return undefined
     }
-    return { id: challenge.value.id, text }
+    return { captchaId: challenge.value.id, captchaText: text }
   },
   /** 校验失败后必须换一张，避免重复使用已消费的验证码。 */
   refresh() { void load() },

@@ -20,6 +20,7 @@ import { parseArgs } from 'node:util'
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..')
 const OUT = path.join(ROOT, 'hls-output')
+const CLEAN_DIR = path.join(ROOT, 'media/clean')
 const MAP = path.join(ROOT, 'data/video-import-map.json')
 
 const { values } = parseArgs({
@@ -40,7 +41,10 @@ for (const w of works) {
   for (const e of w.episodes) {
     const dest = path.join(OUT, w.id, `episode-${e.no}`)
     if (fs.existsSync(path.join(dest, 'index.m3u8'))) continue
-    tasks.push({ src: e.file, dest, title: w.title, no: e.no })
+    // 去水印后的源优先（scripts/dewatermark.py 产出）
+    const clean = path.join(CLEAN_DIR, w.id, path.basename(e.file))
+    const src = fs.existsSync(clean) ? clean : e.file
+    tasks.push({ src, dest, title: w.title, no: e.no, cleaned: src !== e.file })
   }
 }
 
@@ -49,8 +53,10 @@ const allTasks = [...tasks]
 if (limit > 0) tasks.length = Math.min(tasks.length, limit)
 
 console.log(`待转码 ${tasks.length} 集（并发 ${values.parallel}）${limit ? `，本批上限 ${limit}/${allTasks.length}` : ''}`)
+const cleanedCount = tasks.filter((t) => t.cleaned).length
+if (cleanedCount) console.log(`  其中 ${cleanedCount} 集使用去水印后的源（media/clean/）`)
 if (values['dry-run']) {
-  for (const t of tasks.slice(0, 30)) console.log(`  ${t.title} 第${t.no}集 -> ${t.dest}`)
+  for (const t of tasks.slice(0, 30)) console.log(`  ${t.title} 第${t.no}集 -> ${t.dest}${t.cleaned ? ' [已去水印]' : ''}`)
   if (tasks.length > 30) console.log(`  ... 其余 ${tasks.length - 30} 集`)
   process.exit(0)
 }

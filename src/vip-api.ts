@@ -23,23 +23,36 @@ export interface VipOrder {
   amount: number
   currency: 'USDT'
   status: 'creating' | 'pending' | 'confirming' | 'partially_paid' | 'paid' | 'failed' | 'expired' | 'refunded' | 'review'
-  provider: 'nowpayments' | 'vaehub'
+  /** 'base' 是改造前的历史通道标识，链上收款方式与 'bsc' 一致，服务端已统一归一化。 */
+  provider: 'nowpayments' | 'vaehub' | 'bsc' | 'base'
   createdAt: string
   paidAt: string | null
   checkoutUrl: string | null
   payAddress: string | null
   payAmount: number | null
+  /** 应付金额的精确文本（BSC 链通道：尾数是订单唯一标识，不能丢尾零）。 */
+  payAmountText: string | null
   payCurrency: string | null
   qrString: string | null
   qrExpiresAt: string | null
   network: string
   expiresAt: string | null
+  /** BSC 链通道：代币符号与链 ID，用于提醒用户核对网络。 */
+  tokenSymbol: string | null
+  chainId: number | null
+  /** BSC 链通道：代币合约地址（用户核对充值币种时需要）。 */
+  tokenContract: string | null
+  /** 链上交易哈希，到账后写入，便于人工核对。 */
+  txHash: string | null
 }
 
 export interface VipProvider {
-  id: 'nowpayments' | 'vaehub'
+  id: VipProviderId
   name: string
 }
+
+/** 支付通道标识：NOWPayments（USDT）、VaeHub（法币代收）、BSC 链（自建固定地址）。 */
+export type VipProviderId = 'nowpayments' | 'vaehub' | 'bsc'
 
 export interface VipCatalog {
   plans: VipPlan[]
@@ -57,6 +70,15 @@ export interface CaptchaChallenge {
   id: string | null
   svg: string | null
   required: boolean
+}
+
+/**
+ * 图形验证码答案。服务端按 captchaId / captchaText 两个字段校验，
+ * 与题目 id / text 的含义不同，这里显式区分，避免字段名错配导致校验永远失败。
+ */
+export interface CaptchaAnswer {
+  captchaId: string
+  captchaText: string
 }
 
 export class AccountApiError extends Error {
@@ -115,7 +137,7 @@ export const authApi = {
     method: 'POST',
     body: JSON.stringify({ lang }),
   }),
-  forgotPassword: (email: string, lang: string, captcha?: { id: string; text: string }) => accountRequest<{ sent: boolean }>('/auth/password/forgot', {
+  forgotPassword: (email: string, lang: string, captcha?: CaptchaAnswer) => accountRequest<{ sent: boolean }>('/auth/password/forgot', {
     method: 'POST',
     body: JSON.stringify({ email, lang, ...(captcha ?? {}) }),
   }),

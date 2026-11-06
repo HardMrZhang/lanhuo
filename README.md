@@ -34,11 +34,36 @@ npm start          # 后端同时托管 dist/ ，访问 http://localhost:3001
 
 1. 复制 `.env.example` 为 `.env`，在 NOWPayments 商户后台创建 API Key、配置 IPN Secret，分别填写 `NOWPAYMENTS_API_KEY`、`NOWPAYMENTS_IPN_SECRET`。密钥仅放在服务端。不启用 NOWPayments 时留空即可。
 2. 设置 `APP_URL` 为网站的公网 HTTPS 地址，例如 `https://drama.example.com`。NOWPayments 每笔支付自动指定通知地址 `${APP_URL}/api/payments/nowpayments/ipn`，需允许支付平台访问该 POST 接口。商户需开通 USDT TRC20 收款，并确保平台最低支付金额支持 10 USDT。反向代理将 `/api` 转发到 Node 服务，网站与 API 使用同一来源。
-3. VaeHub 通道（法币代收，与 NOWPayments 的 USDT 错开）：找商务获取接口地址（`VAEHUB_API_BASE`，如 `https://xxxx.top/api`）、`VAEHUB_APP_KEY` 与 `VAEHUB_APP_SECRET`，按 `.env.example` 填写 `VAEHUB_COUNTRY`（ISO3 国家码，代收必填）、`VAEHUB_CURRENCY`（默认 USD）与可选的 `VAEHUB_PAYCODE`，并配置 `VAEHUB_USDT_RATES_JSON`（如 `{"USD":1}`，即 1 USDT 兑换多少法币，实收金额按此换算、小数点后两位向上取整）。回调地址为 `${APP_URL}/api/payments/vaehub/notify`（VaeHub 全局只配一个回调地址，建单时自动带上该地址；也可在“集成配置”后台手动配置），平台会以 `Authorization: Bearer …` 签名token 推送 `payin_notify`，本站验签通过后返回纯文本 `SUCCESS`。`VAEHUB_RETURN_TYPE=cashier` 返回收银台跳转链接，`qrcode` 返回付款二维码串。下单时用户在 NOWPayments（USDT）与 VaeHub（法币）之间二选一。
+3. VaeHub 通道（法币代收，与 NOWPayments 的 USDT 错开）：找商务获取接口地址（`VAEHUB_API_BASE`，如 `https://xxxx.top/api`）、`VAEHUB_APP_KEY` 与 `VAEHUB_APP_SECRET`，按 `.env.example` 填写 `VAEHUB_COUNTRY`（**ISO3 三字母国家码**，如 `USA` / `SGP`，代收必填）、`VAEHUB_CURRENCY`（默认 USD）与可选的 `VAEHUB_PAYCODE`（**支付方式代码**，如 `PAYNOW_B2C`、`CASHAPP`，不是国家码；不填则由 VaeHub 自动选择），并配置 `VAEHUB_USDT_RATES_JSON`（如 `{"USD":1}`，即 1 USDT 兑换多少法币，实收金额按此换算、小数点后两位向上取整）。这三个字段任一缺失或不合规，该通道不会出现在前端支付方式列表中，服务端启动日志会打印 `[vaehub] 通道未启用，缺少：…` 说明原因。回调地址为 `${APP_URL}/api/payments/vaehub/notify`（VaeHub 全局只配一个回调地址，建单时自动带上该地址；也可在“集成配置”后台手动配置），平台会以 `Authorization: Bearer …` 签名token 推送 `payin_notify`，本站验签通过后返回纯文本 `SUCCESS`。`VAEHUB_RETURN_TYPE=cashier` 返回收银台跳转链接，`qrcode` 返回付款二维码串。下单时用户在 NOWPayments（USDT）与 VaeHub（法币）之间二选一。
+4. BSC 链通道（BEP-20 USDT，自建固定地址）：无需第三方商户账号，填 `BSC_PAY_ADDRESS`（收款地址）与可选的 `BSC_TOKEN_CONTRACT`（默认 BSC 主网 USDT `0x55d398326f99059fF775485246999027B3197955`）即可启用。所有订单共用这一个地址，靠「套餐价 + 唯一金额尾数偏移」（如 `10.0123 USDT`，固定 4 位小数，尾数即订单唯一标识）区分订单，用户无需填写备注或 TxHash。支付页会展示一个**付款二维码**，内容是 EIP-681 支付 URI（`ethereum:<代币合约>@56/transfer?address=<收款地址>&uint256=<最小单位金额>`），主流钱包扫码即可预填币种、网络与金额。**订单限时 15 分钟**（`BSC_ORDER_TTL_MS`，默认 900000）：支付页显示实时倒计时，超时订单自动作废（`expired`），前端不再展示收款地址与二维码。作废订单的金额尾数仍会保留一段时间（`BSC_LATE_PAYMENT_WINDOW_MS`，默认 6 小时），期间到达的链上转账依旧认领回原订单——用户可能在截止前一刻就发起了转账，只是链上确认偏慢，钱已进收款地址不能丢弃；超过保留期后该金额才允许被新订单复用。服务端定时扫链上转账日志，按金额精确匹配订单并自动开通会员；金额不符的订单转入人工核对，绝不自动开通。该通道没有第三方回调，因此到账确认取决于轮询间隔（`BSC_POLL_INTERVAL_MS`，默认 15 秒）与链上确认数（`BSC_CONFIRMATIONS`，默认 15）。注意 BSC 上 USDT 交易量极大，公共节点对 `eth_getLogs` 的查询范围有硬限制，服务端会自动分片查询；同时务必确认用户选的是 **BNB Smart Chain** 网络，转错链（以太坊主网、TRON TRC20 等）会导致资产无法找回。
 4. 执行 `npm run dev` 或构建后 `npm start`；启动命令自动加载 `.env`。没有完整支付配置时仍可注册登录和查看套餐，付款按钮保持不可用。
 4. 可使用独立沙箱账号/密钥与 `NOWPAYMENTS_SANDBOX=true` 辅助调试，但 NOWPayments 已声明沙箱自 2025 年起不再持续维护，与正式环境可能不同。上线前必须使用正式账号完成小额真实支付与通知验收。测试通知同样需要能从外网访问的回调地址。
 
 订单金额与会员天数由服务端生成，客户端不能修改。修改 `VIP_PLANS_JSON` 可调整未来订单套餐（字段 `id/name/days/price/currency/recommended`，示例见 `.env.example`），已创建订单保留购买时的价格和天数。重复提交使用幂等键，网络结果不明的订单保留供运营者核对，不盲目重复创建收款订单。
+
+### 订单状态机
+
+订单状态由服务端集中裁决，状态写入只有一个入口（`transitionOrder`），每次写入都要先过合法迁移表 `ORDER_STATUS_TRANSITIONS`，非法迁移一律拒绝、订单保持原状态：
+
+| 状态 | 含义 | 说明 |
+| --- | --- | --- |
+| `creating` | 订单创建中 | 刚写入数据库，尚未确认收款信息 |
+| `pending` | 等待支付 | 已拿到收款地址 / 收银台链接 |
+| `confirming` | 支付确认中 | 渠道已受理，正在确认 |
+| `partially_paid` | 待补足金额 | 到账不足 |
+| `paid` | 支付成功 | 已开通会员（终态，可被 `refunded` 覆盖） |
+| `failed` | 支付失败 | 确定性失败：通道业务级拒绝、HTTP 4xx、渠道明确失败 |
+| `expired` | 已过期作废 | 超过支付时限，自动作废 |
+| `refunded` | 已退款 | 保留墓碑，迟到回调不能翻回已支付 |
+| `review` | 等待人工核实 | **结果不明**才进人工队列，不是失败 |
+
+三条关键规则：
+
+1. **超时必须真的作废。** 服务端每 30 秒扫一次第三方通道（VaeHub / NOWPayments）的超时订单，置为 `expired`；链上通道由自己的扫描器作废。渠道没返回有效期时用 15 分钟兜底（`PROVIDER_ORDER_TTL_MS`）。订单不再停留在 `pending`，迟到的回调也就无从把它改成 `review`。
+2. **终态不会被降级。** `failed` / `expired` / `refunded` 的订单不会被迟到的回调改成「等待支付」「支付确认中」或「等待人工核实」。迟到的回调在状态机层面被直接拒绝。
+3. **作废不等于丢钱。** `expired` 的订单如果之后确实收到了钱（迟到的转账、迟到的成功通知），仍然升级为 `paid` 并开通会员 —— 用户付了钱却拿不到会员比状态显示难看严重得多。唯一例外是「金额不符」：钱动了但数目不对，这类订单进 `review` 交人工核对，即使订单已过期也不会被丢弃。
+
+「等待人工核实」只用于真正的歧义：渠道建单成功但响应无法解析、金额或币种不符、支付编号被复用。它是给人看的状态，不是失败的兜底。
 
 ### 数据与运行
 
@@ -159,6 +184,38 @@ npm run video:db          # 写入 MySQL 并合并 data/dramas.json
 
 `npm run video:db` 需要 MySQL 凭据（`MYSQL_*`），未加载 `.env` 会报 `Access denied`。若本机 Node 18 不支持 `--env-file-if-exists`，用 `set -a && . ./.env && set +a` 手动导出。
 
+## 去除视频水印
+
+部分片源（91CRDJ.COM 一类）在画面像素里烧录了半透明文字水印，沿画面边缘匀速移动。这不是播放器叠加层，所以前端改样式无法去掉，只能在转码前处理像素。
+
+`scripts/dewatermark.py` 的做法：
+
+1. 从参考帧裁出水印模板，用高通残差 + FFT 归一化互相关（NCC）逐帧定位水印左上角；
+2. 从模板提取水印文字的笔画形状（半透明叠加层的正高通残差），作为固定遮罩；
+3. 把遮罩贴到每帧的水印位置，用周围像素做修复（`cv2.inpaint` / Telea）。
+
+水印模板能按分辨率缩放，同一支水印的所有片源通用。NCC 定位时对平坦窗口做了有效性过滤，避免归一化分母退化产生虚假高分。
+
+```bash
+# 准备环境（OpenCV 不装到系统 Python，避免污染全局）
+python3 -m venv .venv-wm
+.venv-wm/bin/pip install opencv-python-headless numpy
+
+# 检测水印轨迹（确认水印存在、看它怎么动）
+.venv-wm/bin/python scripts/dewatermark.py detect <video.mp4> -o track.json
+
+# 去水印，输出无水印视频
+.venv-wm/bin/python scripts/dewatermark.py run <video.mp4> -o clean.mp4
+
+# 批量处理 media/imported 下所有剧（先检测，无水印的自动跳过）
+node scripts/dewatermark-batch.mjs --dry-run
+node scripts/dewatermark-batch.mjs --parallel 2
+```
+
+去水印后的源放在 `media/clean/<dramaId>/`，`npm run video:transcode` 会优先使用它（存在即用，并在 dry-run 输出里标 `[已去水印]`）。转码后按原有流程 `npm run video:s3` 上传即可。
+
+多码率 HLS 的产物是 `episode-N/<tier>/index.m3u8`，服务端中转已支持档位子目录：`/s3-hls/<dramaId>/episode-N/720p/seg_0000.ts`。
+
 ## 流畅播放做了什么
 
 - HLS 自适应码率：弱网自动降到 480p，网络好升回 1080p，不会转圈。
@@ -194,10 +251,23 @@ src/                 Vue 前端
 | `VAEHUB_APP_KEY` | 无 | VaeHub 服务端 App Key |
 | `VAEHUB_APP_SECRET` | 无 | VaeHub 服务端 App Secret |
 | `VAEHUB_CURRENCY` | USD | VaeHub 代收法币币种 |
-| `VAEHUB_COUNTRY` | 无 | VaeHub 代收国家（ISO3），必填 |
+| `VAEHUB_COUNTRY` | 无 | VaeHub 代收国家（ISO3 三字母码，如 USA / SGP），必填 |
 | `VAEHUB_USDT_RATES_JSON` | 无 | VaeHub 法币汇率（如 `{"USD":1}`），缺失则该通道不可用 |
-| `VAEHUB_PAYCODE` | 无 | VaeHub 银行代码，不填则自动选择支付方式 |
+| `VAEHUB_PAYCODE` | 无 | VaeHub 支付方式代码（如 PAYNOW_B2C、CASHAPP），不填则自动选择 |
 | `VAEHUB_RETURN_TYPE` | cashier | `cashier`=收银台链接，`qrcode`=付款二维码串 |
+| `BSC_PAY_ADDRESS` | 无 | BSC 链自建固定收款地址，配置后启用该通道 |
+| `BSC_TOKEN_CONTRACT` | `0x55d398326f99059fF775485246999027B3197955` | BSC 主网 USDT（Binance-Peg）合约 |
+| `BSC_TOKEN_SYMBOL` | USDT | 收款代币符号（仅展示用） |
+| `BSC_TOKEN_DECIMALS` | 18 | 收款代币精度 |
+| `BSC_CHAIN_ID` | 56 | BSC 主网 Chain ID |
+| `BSC_DISPLAY_DECIMALS` | 4 | 应付金额展示精度（固定小数位，尾数即订单标识） |
+| `BSC_OFFSET_MAX_STEPS` | 100 | 金额尾数偏移步数上限，决定应付金额最多比套餐价多多少 |
+| `BSC_CONFIRMATIONS` | 15 | 开通会员前要求的链上确认数 |
+| `BSC_POLL_INTERVAL_MS` | 15000 | 链上到账扫描间隔 |
+| `BSC_ORDER_TTL_MS` | 900000 | 订单有效期（15 分钟），超时订单自动作废 |
+| `BSC_LATE_PAYMENT_WINDOW_MS` | 21600000 | 订单作废后仍认领迟到转账的宽限期（6 小时），期间金额尾数不被新订单复用 |
+| `BSC_LOOKBACK_BLOCKS` | 200 | 进程重启后回溯扫描的区块数 |
+| `BSC_RPC_URL` | 多个公共 RPC | BSC 链 RPC 地址，多个用逗号分隔 |
 | `S3_BUCKET` | `duanju-h5-hls-473041657070` | HLS 上传目标桶（上传与指链脚本共用，自动读 `.env`） |
 | `AWS_REGION` | `ap-northeast-1` | S3 区域 |
 | `S3_PREFIX` | `hls` | S3 前缀目录 |

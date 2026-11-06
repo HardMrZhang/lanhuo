@@ -5,7 +5,7 @@ import SiteHeader from '../components/SiteHeader.vue'
 import SiteFooter from '../components/SiteFooter.vue'
 import AccountPanel from '../components/AccountPanel.vue'
 import { account, refreshAccount, updateAccount } from '../account'
-import { AccountApiError, vipApi, type VipCatalog, type VipOrder } from '../vip-api'
+import { AccountApiError, vipApi, type VipCatalog, type VipOrder, type VipProviderId } from '../vip-api'
 import { localeTag, tr, translateMessage, translatePlanName } from '../i18n'
 
 const route = useRoute()
@@ -24,17 +24,98 @@ const currentOrder = ref<VipOrder | null>(null)
 const orderError = ref('')
 const copiedField = ref('')
 const copyError = ref('')
-const returnOrderId = typeof route.query.order === 'string' ? route.query.order : ''
+
+/** 跳转前记录的待支付订单 id：收银台付款后返回本站时据此定位订单。 */
+const PENDING_ORDER_KEY = 'duanju_pending_order'
+
+/**
+ * 返回支付页时待查看的订单 id。
+ *
+ * 来源有两种：URL 上的 order 参数（渠道带回来的），以及 sessionStorage 里
+ * 跳转前记下的 id（VaeHub 收银台返回时用）。后者保证从收银台返回也能
+ * 自动定位到刚付的那笔订单，而不是让用户自己在订单列表里找。
+ */
+function pendingOrderId(): string {
+  const fromQuery = typeof route.query.order === 'string' ? route.query.order : ''
+  if (fromQuery) return fromQuery
+  try { return sessionStorage.getItem(PENDING_ORDER_KEY) || '' } catch { return '' }
+}
+
+const returnOrderId = pendingOrderId()
 const currentOrderId = ref(returnOrderId)
 const returnedFromPayment = Boolean(returnOrderId || route.query.payment)
-const selectedProvider = ref<'nowpayments' | 'vaehub' | ''>('')
+const selectedProvider = ref<VipProviderId | ''>('')
 let active = true
 let userEpoch = 0
 let pollTimer: ReturnType<typeof setTimeout> | undefined
 const requestKeys = new Map<string, string>()
 
-const providerName = (id: string) => id === 'vaehub' ? 'VaeHub' : id === 'nowpayments' ? 'NOWPayments' : id
+const providerName = (id: string) => id === 'vaehub' ? 'VaeHub' : id === 'bsc' || id === 'base' ? 'BSC 链自建地址' : id === 'nowpayments' ? 'NOWPayments' : id
 const providerNames = computed(() => (catalog.value?.payment.providers || []).map((item) => providerName(item.id)).join(' / '))
+/**
+ * 支付倒计时。
+ *
+ * 链上订单共用同一个收款地址，尾数是订单的唯一标识，因此订单必须有时限：
+ * 15 分钟内未支付则订单作废（过期作废），收款地址与二维码不再对用户展示。
+ *
+ * 用一个每秒推进的时钟驱动，而不是把过期时间算成常量 —— 模板里所有与
+ * 「剩余时间」相关的判断（按钮是否可用、是否展示过期提示）都依赖它重算。
+ */
+const clock = ref(Date.now())
+let countdownTimer: number | undefined
+/** 订单剩余毫秒数；没有过期时间或已经过期返回 0。 */
+function remainingMs(order: VipOrder | null) {
+  if (!order?.expiresAt) return 0
+  const left = Date.parse(order.expiresAt) - clock.value
+  return Number.isFinite(left) ? Math.max(0, left) : 0
+}
+/** 倒计时文案 mm:ss（超过一小时显示 h:mm:ss）。 */
+function countdownText(order: VipOrder | null) {
+  const left = remainingMs(order)
+  if (left <= 0) return '00:00'
+  const total = Math.ceil(left / 1000)
+  const hours = Math.floor(total / 3600)
+  const minutes = Math.floor((total % 3600) / 60)
+  const seconds = total % 60
+  const pad = (value: number) => String(value).padStart(2, '0')
+  return hours > 0 ? `${pad(hours)}:${pad(minutes)}:${pad(seconds)}` : `${pad(minutes)}:${pad(seconds)}`
+}
+function stopCountdown() {
+  if (countdownTimer !== undefined) { window.clearInterval(countdownTimer); countdownTimer = undefined }
+}
+function startCountdown() {
+  stopCountdown()
+  clock.value = Date.now()
+  countdownTimer = window.setInterval(() => { clock.value = Date.now() }, 1000)
+}
+/**
+ * 当前订单是否已过期作废。
+ *
+ * 必须同时满足两个条件：倒计时归零，且订单还处于「等待支付」的阶段。
+ * 只看时间是不够的 —— 已支付 / 已退款 / 人工核实中的订单即使过了支付时限，
+ * 也不该显示「订单已过期作废」，那会把成功付款的订单说成作废。
+ */
+const currentExpired = computed(() => {
+  const order = currentOrder.value
+  if (!order?.expiresAt) return false
+  if (remainingMs(order) > 0) return false
+  return isPending(order)
+})
+/** 剩余不足 1 分钟时把倒计时标红，给用户压迫感。 */
+const countdownUrgent = computed(() => remainingMs(currentOrder.value) > 0 && remainingMs(currentOrder.value) <= 60_000)
+const currentCountdown = computed(() => countdownText(currentOrder.value))
+
+/**
+ * BSC 链固定地址通道：地址共用，靠金额尾数定位订单，链上确认后自动开通。
+ * 'base' 是改造前的历史通道标识，收款方式相同，一并按 BSC 处理。
+ */
+function bscActive(order: VipOrder | null) { return Boolean(order && (order.provider === 'bsc' || order.provider === 'base')) }
+/** 应付金额的精确文本：BSC 通道尾数是订单唯一标识，必须原样展示，不能用 number 丢失尾零。 */
+function payAmountText(order: VipOrder) {
+  return order.payAmountText ?? String(order.payAmount ?? '')
+}
+/** 付款二维码地址：服务端生成 SVG，内容是 EIP-681 支付 URI。 */
+function qrUrl(order: VipOrder) { return `/api/vip/orders/${encodeURIComponent(order.id)}/qr` }
 const statusLabels = computed<Record<string, string>>(() => ({
   creating: tr('订单创建中', 'Creating order'), pending: tr('等待支付', 'Awaiting payment'), confirming: tr('支付确认中', 'Confirming payment'),
   partially_paid: tr('待补足金额', 'Underpaid'), paid: tr('支付成功', 'Payment confirmed'), failed: tr('支付失败', 'Payment failed'),
@@ -54,8 +135,22 @@ const statusDescriptions = computed<Record<string, string>>(() => ({
 const currentDescription = computed(() => {
   const order = currentOrder.value
   if (!order) return ''
+  if (bscActive(order)) {
+    if (order.status === 'pending' || order.status === 'expired') {
+      if (order.expiresAt && remainingMs(order) <= 0) {
+        return tr('此订单已过期作废，请勿继续转账。如已转账请联系站点运营者核对。', 'This order has expired. Do not send any more funds. If you already paid, contact the site operator for review.')
+      }
+      if (order.status === 'expired') {
+        return tr('此订单已过期作废，请勿继续转账。如已转账请联系站点运营者核对。', 'This order has expired. Do not send any more funds. If you already paid, contact the site operator for review.')
+      }
+      return tr(`请通过 BSC 链向下方地址转入 ${payAmountText(order)} ${order.tokenSymbol || 'USDT'}（务必看清网络与金额尾数）。链上确认到账后，会员时长会自动更新。`,
+        `Send exactly ${payAmountText(order)} ${order.tokenSymbol || 'USDT'} to the address below on the BSC chain. Your membership updates automatically once the transfer is confirmed on-chain.`)
+    }
+    if (order.status === 'confirming') return tr('已收到转账，正在等待链上确认，请勿重复付款。', 'Your transfer was detected and is awaiting on-chain confirmation. Please do not pay again.')
+    if (order.status === 'review') return tr('到账金额与订单金额不一致，请勿重复付款。我们会核对交易哈希后为你处理。', 'The received amount does not match the order amount. Do not pay again. We will review the transaction hash for you.')
+  }
   if (order.status === 'pending') {
-    if (order.expiresAt && Date.parse(order.expiresAt) <= Date.now()) return tr('此支付地址已超过有效时间，请勿继续转账。已转账的订单请等待确认；未支付可重新选择套餐。', 'This payment address has expired. Do not send funds. If you already paid, wait for confirmation; otherwise, choose a plan to start again.')
+    if (order.expiresAt && remainingMs(order) <= 0) return tr('此支付地址已超过有效时间，请勿继续转账。已转账的订单请等待确认；未支付可重新选择套餐。', 'This payment address has expired. Do not send funds. If you already paid, wait for confirmation; otherwise, choose a plan to start again.')
     if (!canContinue(order)) return tr('支付地址暂不可用，请刷新订单后再试，暂勿转账。', 'The payment address is currently unavailable. Refresh the order and try again. Do not send funds yet.')
   }
   return statusDescriptions.value[order.status] || tr('支付结果仍在核实，请稍后刷新。', 'Your payment is still being verified. Please refresh shortly.')
@@ -73,10 +168,13 @@ function message(error: unknown) { return error instanceof Error ? error.message
 function isPending(order: VipOrder) { return ['creating', 'pending', 'confirming', 'partially_paid'].includes(order.status) }
 function vaehubActive(order: VipOrder) { return order.provider === 'vaehub' }
 function canOpenCashier(order: VipOrder) { return vaehubActive(order) && Boolean(order.checkoutUrl) && ['pending', 'confirming'].includes(order.status) }
-// NOWPayments 订单靠转账地址继续；VaeHub 订单跳转收银台继续（qrcode 模式展示二维码串）。
+// NOWPayments / Base 订单靠转账地址继续；VaeHub 订单跳转收银台继续（qrcode 模式展示二维码串）。
+// 倒计时归零的订单一律不再允许「继续支付」：过期作废，避免用户往作废的尾数上转账。
 function canContinue(order: VipOrder) {
   if (vaehubActive(order)) return canOpenCashier(order)
-  return Boolean(order.payAddress && order.payAmount && order.status === 'pending' && (!order.expiresAt || Date.parse(order.expiresAt) > Date.now()))
+  if (order.expiresAt && remainingMs(order) <= 0) return false
+  if (bscActive(order)) return Boolean(order.payAddress && order.payAmount && order.status === 'pending')
+  return Boolean(order.payAddress && order.payAmount && order.status === 'pending')
 }
 function stopPolling() { clearTimeout(pollTimer); pollTimer = undefined }
 function handleAuthError(error: unknown) {
@@ -92,7 +190,10 @@ async function loadCatalog() {
     catalog.value = data
     selectedId.value = data.plans.find((plan) => plan.recommended)?.id || data.plans[0]?.id || ''
     const ids = (data.payment.providers || []).map((item) => item.id)
-    if (!ids.includes(selectedProvider.value as 'nowpayments' | 'vaehub')) selectedProvider.value = ids[0] ?? ''
+    // 通道列表可能变化（新增/移除通道），当前选择失效时回退到第一个可用通道。
+    if (!selectedProvider.value || !ids.includes(selectedProvider.value)) {
+      selectedProvider.value = ids[0] ?? ''
+    }
   } catch (error) { if (active) catalogError.value = message(error) }
   finally { if (active) catalogLoading.value = false }
 }
@@ -124,6 +225,16 @@ function schedulePoll() {
   }
 }
 
+// 倒计时归零的瞬间：立即拉一次订单状态，让服务端把订单标记为 expired（过期作废）。
+// 只触发一次，避免每秒都打接口。
+let expiryNotifiedFor = ''
+watch(currentExpired, (expired) => {
+  const order = currentOrder.value
+  if (!expired || !order || expiryNotifiedFor === order.id) return
+  expiryNotifiedFor = order.id
+  void refreshOrder()
+})
+
 async function refreshOrder() {
   if (!account.user || !currentOrderId.value || orderBusy.value) return
   const epoch = userEpoch
@@ -136,6 +247,9 @@ async function refreshOrder() {
     if (!active || epoch !== userEpoch || orderId !== currentOrderId.value) return
     currentOrder.value = result.order
     updateAccount(result.user)
+    // 订单已终态（已支付 / 已失败 / 已过期）：清掉「待支付订单」记录，
+    // 否则下次打开页面还会被带回这笔已完结的订单。
+    if (!isPending(result.order)) clearPendingOrder(result.order.id)
     const index = orders.value.findIndex((order) => order.id === result.order.id)
     if (index >= 0) orders.value[index] = result.order
     else orders.value.unshift(result.order)
@@ -180,6 +294,42 @@ async function copyPayment(value: string, field: string) {
   }
 }
 
+/**
+ * 收银台跳转标记：本次下单已经自动跳转过，避免刷新/轮询时反复弹走。
+ *
+ * 用订单 id 做键，同一笔订单只跳一次；换订单则重新跳。
+ */
+const cashierRedirected = ref('')
+
+/**
+ * VaeHub 收银台自动跳转。
+ *
+ * 第三方代收的语义是「用户点支付 → 直接进收银台付款」，让用户自己找链接
+ * 是漏了一步：订单已经建好、收银台链接已经拿到，却停在本站结果页。
+ * 所以下单成功后直接跳转过去，页面上仍保留「前往收银台支付」按钮作为兜底
+ * （跳转失败、用户手动返回时还能点）。
+ *
+ * 跳转前把订单 id 记在 sessionStorage：收银台付款完成后把用户送回本页时，
+ * 能直接定位到这笔订单并开始轮询状态。用 sessionStorage 而不是往第三方链接上
+ * 挂 query 参数 —— 有些渠道会对完整 URL 做签名，多加参数可能导致建单校验失败。
+ */
+function redirectToCashier(order: VipOrder) {
+  if (!order.checkoutUrl || order.provider !== 'vaehub') return
+  if (cashierRedirected.value === order.id) return
+  cashierRedirected.value = order.id
+  try { sessionStorage.setItem(PENDING_ORDER_KEY, order.id) } catch { /* Storage is optional. */ }
+  window.location.assign(order.checkoutUrl)
+}
+
+/** 清掉「待支付订单」记录（订单已终态时调用）。 */
+function clearPendingOrder(orderId?: string) {
+  try {
+    if (!orderId || sessionStorage.getItem(PENDING_ORDER_KEY) === orderId) {
+      sessionStorage.removeItem(PENDING_ORDER_KEY)
+    }
+  } catch { /* Storage is optional. */ }
+}
+
 async function createOrder() {
   if (!canPay.value || !selectedPlan.value) return
   const epoch = userEpoch
@@ -198,6 +348,11 @@ async function createOrder() {
     orders.value = [order, ...orders.value.filter((item) => item.id !== order.id)]
     await nextTick()
     if (!active || epoch !== userEpoch) return
+    // VaeHub：收银台链接已拿到，直接跳过去付款（页面上的按钮作为兜底保留）。
+    if (order.provider === 'vaehub' && order.checkoutUrl) {
+      redirectToCashier(order)
+      return
+    }
     document.getElementById('result-heading')?.scrollIntoView({ behavior: 'smooth', block: 'center' })
     await refreshOrder()
     schedulePoll()
@@ -230,6 +385,8 @@ function onVisibilityChange() {
 watch(() => account.user?.id, (userId) => {
   userEpoch++
   stopPolling()
+  stopCountdown()
+  expiryNotifiedFor = ''
   orders.value = []
   currentOrder.value = null
   currentOrderId.value = returnOrderId
@@ -245,6 +402,13 @@ watch(() => account.user?.id, (userId) => {
   }
 }, { immediate: true })
 
+// 只有当前订单还在等待支付、且带过期时间时才需要跑倒计时。
+watch([currentOrder, () => currentOrder.value?.status, () => currentOrder.value?.expiresAt], () => {
+  const order = currentOrder.value
+  if (order?.expiresAt && order.status === 'pending') startCountdown()
+  else stopCountdown()
+}, { immediate: true })
+
 watchEffect(() => { document.title = tr('VIP 会员中心 · 短剧剧场', 'VIP Membership · Drama Theater') })
 
 onMounted(() => {
@@ -252,7 +416,7 @@ onMounted(() => {
   void refreshAccount()
   document.addEventListener('visibilitychange', onVisibilityChange)
 })
-onUnmounted(() => { active = false; stopPolling(); document.removeEventListener('visibilitychange', onVisibilityChange) })
+onUnmounted(() => { active = false; stopPolling(); stopCountdown(); document.removeEventListener('visibilitychange', onVisibilityChange) })
 </script>
 
 <template>
@@ -283,27 +447,69 @@ onUnmounted(() => { active = false; stopPolling(); document.removeEventListener(
       <section v-if="returnedFromPayment || currentOrder" class="payment-result" aria-labelledby="result-heading" aria-live="polite">
         <div class="result-header"><div><p class="eyebrow">PAYMENT STATUS</p><h2 id="result-heading">{{ currentOrder ? statusLabels[currentOrder.status] || tr('等待确认', 'Awaiting confirmation') : tr('查看支付结果', 'View payment status') }}</h2></div><span v-if="currentOrder" class="status-dot" :class="currentOrder.status" aria-hidden="true" /></div>
         <template v-if="currentOrder">
-          <p>{{ currentDescription }}</p><p class="order-reference">{{ translatePlanName(currentOrder.planName) }} · {{ price(currentOrder.payAmount ?? currentOrder.amount) }} {{ currentOrder.payCurrency || currentOrder.currency }} · {{ providerName(currentOrder.provider) }} · {{ tr('订单', 'Order') }} {{ currentOrder.id }}</p>
+          <p>{{ currentDescription }}</p><p class="order-reference">{{ translatePlanName(currentOrder.planName) }} · {{ bscActive(currentOrder) ? payAmountText(currentOrder) : price(currentOrder.payAmount ?? currentOrder.amount) }} {{ currentOrder.payCurrency || currentOrder.currency }} · {{ providerName(currentOrder.provider) }} · {{ tr('订单', 'Order') }} {{ currentOrder.id }}</p>
         </template>
         <p v-else>{{ account.user ? tr('正在核实订单状态，会员开通以实际到账结果为准。', 'Checking your order. Your membership starts once payment is confirmed.') : tr('请登录支付时使用的账号，查看订单与会员状态。', 'Sign in to the account used for payment to view your order and membership.') }}</p>
         <p v-if="orderError" class="inline-error" role="alert">{{ translateMessage(orderError) }}</p>
+        <!-- 支付倒计时：链上订单共用收款地址，尾数是订单标识，必须限时支付。 -->
+        <div v-if="currentOrder && currentOrder.expiresAt && !currentExpired && isPending(currentOrder)" class="countdown-bar" role="timer" aria-live="off">
+          <span class="countdown-label">{{ tr('支付剩余时间', 'Time left to pay') }}</span>
+          <strong class="countdown-value" :class="{ urgent: countdownUrgent }">{{ currentCountdown }}</strong>
+          <span class="countdown-hint">{{ tr('超时订单自动作废，请及时完成转账', 'The order is voided once the timer runs out') }}</span>
+        </div>
+        <!-- 过期作废：不再展示地址与二维码，避免用户继续往作废的尾数上转账。 -->
+        <div v-if="currentOrder && (currentExpired || currentOrder.status === 'expired')" class="notice notice-error expired-notice" role="alert">
+          <span class="notice-symbol" aria-hidden="true">!</span>
+          <div>
+            <strong>{{ tr('订单已过期作废', 'This order has expired') }}</strong>
+            <p>{{ tr('支付时限已过，本单已作废，请勿再向该地址转账。如已在时限内发起转账，请保留交易哈希并联系站点运营者核对。', 'The payment window has closed and this order is void. Do not send funds to the address any more. If you sent a transfer before the deadline, keep the transaction hash and contact the site operator.') }}</p>
+          </div>
+        </div>
         <div v-if="currentOrder && vaehubActive(currentOrder) && currentOrder.checkoutUrl" class="transfer-panel">
           <div class="transfer-network"><span>{{ tr('支付通道', 'Payment channel') }}</span><strong>VaeHub · {{ currentOrder.payCurrency }}</strong></div>
           <div class="transfer-amount"><div><small>{{ tr('应付金额 · 在收银台完成支付', 'Amount due · Pay on the cashier page') }}</small><strong>{{ price(currentOrder.payAmount ?? currentOrder.amount) }} <span>{{ currentOrder.payCurrency }}</span></strong></div><a class="copy-button cashier-link" :href="currentOrder.checkoutUrl" target="_blank" rel="noopener">{{ tr('前往收银台支付', 'Open cashier') }}</a></div>
           <p v-if="currentOrder.qrString" class="address-expiry qr-string">{{ tr('二维码内容：', 'QR code content: ') }}{{ currentOrder.qrString }}</p>
-          <p v-if="currentOrder.expiresAt" class="address-expiry">{{ tr(`请于 ${formatDate(currentOrder.expiresAt)} 前完成支付，过期后请勿继续支付。`, `Complete the payment before ${formatDate(currentOrder.expiresAt)}. Do not pay after expiry.`) }}</p>
+          <p v-if="currentOrder.expiresAt" class="address-expiry">{{ tr(`请于 ${formatDate(currentOrder.expiresAt)} 前完成支付（剩余 ${currentCountdown}），过期后请勿继续支付。`, `Complete the payment before ${formatDate(currentOrder.expiresAt)} (${currentCountdown} left). Do not pay after expiry.`) }}</p>
           <p class="transfer-warning">{{ tr('支付完成后回到本页刷新状态，会员时长到账后自动更新。', 'Return here after payment and refresh the status. Your membership updates automatically once payment is confirmed.') }}</p>
         </div>
-        <div v-if="currentOrder && canContinue(currentOrder) && !vaehubActive(currentOrder)" class="transfer-panel">
+        <div v-if="currentOrder && canContinue(currentOrder) && !vaehubActive(currentOrder) && !bscActive(currentOrder)" class="transfer-panel">
           <div class="transfer-network"><span>{{ tr('支付网络', 'Payment network') }}</span><strong>{{ currentOrder.network }}</strong></div>
           <div class="transfer-amount"><div><small>{{ tr('准确转入金额 · 手续费另付', 'Exact amount to send · Fees paid separately') }}</small><strong>{{ currentOrder.payAmount }} <span>USDT</span></strong></div><button class="copy-button" @click="copyPayment(String(currentOrder.payAmount), 'amount')">{{ copiedField === 'amount' ? tr('已复制金额', 'Amount copied') : tr('复制金额', 'Copy amount') }}</button></div>
           <label for="payment-address">{{ tr('专属 USDT 收款地址', 'Your USDT payment address') }}</label>
           <div class="address-field"><input id="payment-address" :value="currentOrder.payAddress" readonly @focus="($event.target as HTMLInputElement).select()" /><button class="copy-button" @click="copyPayment(currentOrder.payAddress!, 'address')">{{ copiedField === 'address' ? tr('已复制', 'Copied') : tr('复制地址', 'Copy address') }}</button></div>
-          <p v-if="currentOrder.expiresAt" class="address-expiry">{{ tr(`请于 ${formatDate(currentOrder.expiresAt)} 前完成转账，过期后请勿继续支付。`, `Complete the transfer before ${formatDate(currentOrder.expiresAt)}. Do not pay after expiry.`) }}</p>
+          <p v-if="currentOrder.expiresAt" class="address-expiry">{{ tr(`请于 ${formatDate(currentOrder.expiresAt)} 前完成转账（剩余 ${currentCountdown}），过期后请勿继续支付。`, `Complete the transfer before ${formatDate(currentOrder.expiresAt)} (${currentCountdown} left). Do not pay after expiry.`) }}</p>
           <p v-else class="address-expiry">{{ tr('转账前请刷新订单，确认仍处于等待支付状态；过期后请勿继续转账。', 'Before sending funds, refresh the order to confirm it is still awaiting payment. Do not pay after it expires.') }}</p>
           <p class="transfer-warning">{{ tr('仅向此地址发送 TRON（TRC20）网络的 USDT。其他币种或网络可能导致资产无法找回。', 'Only send USDT on TRON (TRC20) to this address. Using another currency or network may result in permanent loss of funds.') }}</p>
           <p v-if="copyError" class="inline-error" role="alert">{{ translateMessage(copyError) }}</p>
           <p v-else-if="copiedField" class="copy-success" role="status">{{ copiedField === 'address' ? tr('收款地址已复制', 'Payment address copied') : tr('支付金额已复制', 'Payment amount copied') }}</p>
+        </div>
+        <div v-if="currentOrder && bscActive(currentOrder) && canContinue(currentOrder)" class="transfer-panel base-panel">
+          <div class="base-alert" role="alert">
+            <span class="base-alert-icon" aria-hidden="true">!</span>
+            <div>
+              <strong>{{ tr('请务必确认网络：BSC 链（BNB Smart Chain）', 'Check the network: BSC (BNB Smart Chain)') }}</strong>
+              <p>{{ tr('本单只接受 BSC 链（BEP-20）的 USDT。转错链或转错币种（如以太坊主网 ERC20、TRON TRC20、其它 EVM 链）会导致资产无法找回。', 'This order only accepts USDT on the BSC chain (BEP-20). Sending on the wrong chain or token (such as Ethereum ERC20, TRON TRC20, or another EVM chain) means your funds cannot be recovered.') }}</p>
+            </div>
+          </div>
+          <div class="base-qr-row">
+            <figure class="base-qr">
+              <img :src="qrUrl(currentOrder)" :alt="tr('付款二维码', 'Payment QR code')" width="200" height="200" />
+              <figcaption>{{ tr('扫码支付', 'Scan to pay') }}</figcaption>
+            </figure>
+            <div class="base-qr-detail">
+              <div class="transfer-network"><span>{{ tr('支付网络', 'Payment network') }}</span><strong>BSC · {{ currentOrder.tokenSymbol || 'USDT' }}</strong></div>
+              <div class="transfer-amount"><div><small>{{ tr('准确转入金额 · 尾数是本单唯一标识，勿手动改写', 'Exact amount · The decimals identify this order, do not edit them') }}</small><strong>{{ payAmountText(currentOrder) }} <span>{{ currentOrder.tokenSymbol || 'USDT' }}</span></strong></div><button class="copy-button" @click="copyPayment(payAmountText(currentOrder), 'amount')">{{ copiedField === 'amount' ? tr('已复制金额', 'Amount copied') : tr('复制金额', 'Copy amount') }}</button></div>
+              <label for="bsc-payment-address">{{ tr('BSC 链收款地址', 'BSC chain payment address') }}</label>
+              <div class="address-field"><input id="bsc-payment-address" :value="currentOrder.payAddress" readonly @focus="($event.target as HTMLInputElement).select()" /><button class="copy-button" @click="copyPayment(currentOrder.payAddress!, 'address')">{{ copiedField === 'address' ? tr('已复制', 'Copied') : tr('复制地址', 'Copy address') }}</button></div>
+              <p class="base-network-hint">{{ tr('地址以 0x 开头为 EVM 格式；请在钱包里把网络切换到 BSC（BNB Smart Chain）后再粘贴。', 'This address starts with 0x (EVM format). Switch your wallet network to BSC (BNB Smart Chain) before pasting it.') }}</p>
+            </div>
+          </div>
+          <p v-if="currentOrder.tokenContract" class="base-network-hint">{{ tr('代币合约：', 'Token contract: ') }}<code>{{ currentOrder.tokenContract }}</code></p>
+          <p v-if="currentOrder.expiresAt" class="address-expiry">{{ tr(`请于 ${formatDate(currentOrder.expiresAt)} 前完成转账（剩余 ${currentCountdown}），过期后请勿继续支付。`, `Complete the transfer before ${formatDate(currentOrder.expiresAt)} (${currentCountdown} left). Do not pay after expiry.`) }}</p>
+          <p class="transfer-warning">{{ tr('仅向此地址发送 BSC 链（BEP-20）网络的 USDT。其他币种或网络可能导致资产无法找回。', 'Only send USDT on the BSC chain (BEP-20) to this address. Using another currency or network may result in permanent loss of funds.') }}</p>
+          <p v-if="copyError" class="inline-error" role="alert">{{ translateMessage(copyError) }}</p>
+          <p v-else-if="copiedField" class="copy-success" role="status">{{ copiedField === 'address' ? tr('收款地址已复制', 'Payment address copied') : tr('支付金额已复制', 'Payment amount copied') }}</p>
+          <p class="base-auto-note">{{ tr('到账后由链上自动确认并开通会员，通常 1-2 分钟；确认后本页状态会自动更新。', 'Membership is activated automatically once the transfer is confirmed on-chain, usually within 1–2 minutes. This page updates automatically.') }}</p>
         </div>
         <div v-if="account.user" class="result-actions">
           <button v-if="currentOrderId" class="button-secondary compact" :disabled="orderBusy" @click="refreshOrder">{{ orderBusy ? tr('正在查询…', 'Checking…') : tr('刷新支付状态', 'Refresh payment status') }}</button>
@@ -338,7 +544,7 @@ onUnmounted(() => { active = false; stopPolling(); document.removeEventListener(
                   <input v-model="selectedProvider" type="radio" name="vip-provider" :value="item.id" />
                   <span class="radio-mark" aria-hidden="true" />
                   <span class="provider-name">{{ providerName(item.id) }}</span>
-                  <small>{{ item.id === 'vaehub' ? tr('法币 · 收银台 / 二维码', 'Fiat · Cashier / QR code') : tr('USDT 转账地址', 'USDT transfer address') }}</small>
+                  <small>{{ item.id === 'vaehub' ? tr('法币 · 收银台 / 二维码', 'Fiat · Cashier / QR code') : item.id === 'bsc' ? tr('BSC 链 · 固定地址', 'BSC chain · Fixed address') : tr('USDT 转账地址', 'USDT transfer address') }}</small>
                 </label>
               </div>
               <div class="currency-list" :aria-label="tr('支持的支付币种', 'Supported payment currencies')">{{ currencyText }}</div>
@@ -434,6 +640,17 @@ onUnmounted(() => { active = false; stopPolling(); document.removeEventListener(
 .availability strong { color: #dbc494; font-size: 12px; }
 .availability p { margin-top: 2px; color: #9d998f; font-size: 12px; }
 .notice-symbol { width: 21px; height: 21px; flex-shrink: 0; border: 1px solid #c2a575; border-radius: 50%; text-align: center; font-size: 13px; line-height: 19px; color: var(--vip-gold); }
+/* 支付倒计时：链上订单限时支付，把剩余时间摆在最显眼的位置。 */
+.countdown-bar { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 16px; padding: 12px 16px; border: 1px solid #e9c47e33; border-radius: 11px; background: #e9c47e0b; }
+.countdown-label { color: #bdb49f; font-size: 12px; }
+.countdown-value { color: var(--vip-gold); font-size: 21px; font-weight: 700; letter-spacing: 1px; font-variant-numeric: tabular-nums; }
+.countdown-value.urgent { color: #f0a68c; }
+.countdown-hint { color: #8c93a4; font-size: 11px; margin-left: auto; }
+/* 过期作废提示：与普通 notice 不同，明确告知订单已作废。 */
+.expired-notice { align-items: flex-start; background: #e0603f14; border-color: #e0603f55; color: #f0a68c; }
+.expired-notice .notice-symbol { border-color: #e0603f; color: #f0a68c; }
+.expired-notice strong { display: block; font-size: 13px; }
+.expired-notice p { margin-top: 4px; color: #c9a294; font-size: 11px; line-height: 1.8; }
 .checkout-grid { display: grid; grid-template-columns: 1.12fr 1fr; gap: 28px; margin-top: 28px; }
 .payment-method,.checkout-panel { padding: 28px; border: 1px solid #ffffff12; border-radius: 16px; background: #11141c; }
 .method-heading { display: flex; align-items: center; gap: 13px; }
@@ -528,6 +745,25 @@ onUnmounted(() => { active = false; stopPolling(); document.removeEventListener(
 .address-expiry { color: #8c93a4; font-size: 11px; line-height: 1.8; margin-top: 9px; }
 .transfer-warning { color: #d0b984; font-size: 11px; line-height: 1.8; margin-top: 14px; }
 .copy-success { color: #8ccbaf; font-size: 11px; margin-top: 10px; }
+/* BSC 链固定地址：网络提示要比 TRON 通道更醒目，避免用户转错链。 */
+.base-panel { border-color: #e9c47e55; }
+.base-alert { display: flex; gap: 12px; align-items: flex-start; padding: 14px 15px; margin-bottom: 18px; border: 1px solid #e0603f66; border-radius: 10px; background: #e0603f14; }
+.base-alert-icon { flex-shrink: 0; width: 22px; height: 22px; display: grid; place-items: center; border-radius: 50%; background: #e0603f; color: #1b1005; font-size: 14px; font-weight: 800; }
+.base-alert strong { display: block; color: #f0a68c; font-size: 13px; }
+.base-alert p { margin-top: 4px; color: #c9a294; font-size: 11px; line-height: 1.8; }
+.base-network-hint { margin-top: 9px; color: #9aa3b4; font-size: 11px; line-height: 1.8; }
+.base-network-hint code { font-size: 11px; word-break: break-all; color: #c9a294; }
+.base-auto-note { margin-top: 12px; padding-top: 11px; border-top: 1px solid #ffffff0d; color: #8ccbaf; font-size: 11px; line-height: 1.8; }
+/* 付款二维码与收款信息并排：窄屏时自动上下堆叠。 */
+.base-qr-row { display: flex; gap: 20px; align-items: flex-start; margin-bottom: 14px; }
+.base-qr { flex-shrink: 0; margin: 0; text-align: center; }
+.base-qr img { display: block; width: 180px; height: 180px; padding: 8px; border-radius: 10px; background: #fff; }
+.base-qr figcaption { margin-top: 7px; color: #9aa3b4; font-size: 11px; }
+.base-qr-detail { flex: 1; min-width: 0; }
+@media (max-width: 640px) {
+  .base-qr-row { flex-direction: column; align-items: center; }
+  .base-qr-detail { width: 100%; }
+}
 .compact { padding: 8px 13px; border-radius: 8px; font-size: 12px; }
 .auto-refresh-note { font-size: 11px; color: #88857e; }
 @media (max-width: 900px) {
@@ -586,6 +822,9 @@ onUnmounted(() => { active = false; stopPolling(); document.removeEventListener(
   .order-actions { flex-wrap: wrap; }
   .result-actions { gap: 12px; }
   .auto-refresh-note { width: 100%; }
+  .countdown-bar { gap: 8px; padding: 11px 13px; }
+  .countdown-value { font-size: 19px; }
+  .countdown-hint { width: 100%; margin-left: 0; }
 }
 @media (max-width: 370px) { .hero-copy h1 { font-size: 33px; }.plan-card { padding-inline: 8px; }.plan-price small { display: none; }.plan-detail { font-size: 9px; } }
 @media (max-width: 480px) {

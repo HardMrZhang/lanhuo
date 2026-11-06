@@ -40,7 +40,7 @@ async function submit() {
   try {
     if (mode.value === 'forgot') {
       const captchaValue = captcha.value?.value()
-      if (captchaEnabled.value && !captchaValue) {
+      if (showCaptcha.value && !captchaValue) {
         error.value = captcha.value?.error || tr('请输入图形验证码', 'Enter the captcha code')
         return
       }
@@ -53,7 +53,9 @@ async function submit() {
       return
     }
     const captchaValue = captcha.value?.value()
-    if (captchaEnabled.value && !captchaValue) {
+    // 登录模式下验证码默认不渲染，只有服务端要求时才出现；此时不能因缺少验证码而拦截，
+    // 否则会形成「提示要验证码但页面没有验证码」的死循环。
+    if (showCaptcha.value && !captchaValue) {
       error.value = captcha.value?.error || tr('请输入图形验证码', 'Enter the captcha code')
       return
     }
