@@ -493,7 +493,15 @@ def clean(video, out_video, radius=3, dry_run=False, min_score=NCC_MIN):
             m = build_mask(frame.shape, glyph, p[0], p[1])
             mask |= m
         if (mask > 0).any():
-            frame = cv2.inpaint(frame, mask, radius, cv2.INPAINT_TELEA)
+            # 只在有蒙版的区域做修复：全图 inpaint 在 1080x1920 上非常慢
+            ys, xs = np.nonzero(mask)
+            y0 = max(0, int(ys.min()) - 6)
+            y1 = min(frame.shape[0], int(ys.max()) + 7)
+            x0 = max(0, int(xs.min()) - 6)
+            x1 = min(frame.shape[1], int(xs.max()) + 7)
+            roi = frame[y0:y1, x0:x1]
+            roi_mask = mask[y0:y1, x0:x1]
+            frame[y0:y1, x0:x1] = cv2.inpaint(roi, roi_mask, radius, cv2.INPAINT_TELEA)
             cleaned += 1
         idx += 1
         proc.stdin.write(frame.tobytes())

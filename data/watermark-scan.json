@@ -1,0 +1,1795 @@
+{
+ "local-0299673983c71cf7": {
+  "eps": 9,
+  "wm": false,
+  "detail": []
+ },
+ "local-02a65b328160b8dc": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-03c50bd8f973c9d9": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-05ca1acba30b6808": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 3,
+    "positions": [
+     [
+      33,
+      780
+     ],
+     [
+      133,
+      79
+     ],
+     [
+      362,
+      716
+     ]
+    ],
+    "size": [
+     162,
+     16
+    ]
+   }
+  ]
+ },
+ "local-0b8c7ae89ef47adb": {
+  "eps": 1,
+  "wm": false,
+  "detail": []
+ },
+ "local-0bab598161cda023": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-0e9c0f49ce808b3f": {
+  "eps": 6,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 3,
+    "positions": [
+     [
+      173,
+      167
+     ],
+     [
+      506,
+      93
+     ],
+     [
+      522,
+      503
+     ]
+    ],
+    "size": [
+     162,
+     17
+    ]
+   }
+  ]
+ },
+ "local-0ee5e45e3612ffcb": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 3,
+    "positions": [
+     [
+      350,
+      669
+     ],
+     [
+      480,
+      1102
+     ],
+     [
+      514,
+      80
+     ]
+    ],
+    "size": [
+     162,
+     15
+    ]
+   }
+  ]
+ },
+ "local-129322917ea868c9": {
+  "eps": 7,
+  "wm": false,
+  "detail": []
+ },
+ "local-163adb2b3402d352": {
+  "eps": 6,
+  "wm": false,
+  "detail": []
+ },
+ "local-19fed94ee89813e2": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-1eda1a280ec6f033": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-210ee0d776eb83e0": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 3,
+    "positions": [
+     [
+      210,
+      284
+     ],
+     [
+      347,
+      662
+     ],
+     [
+      414,
+      849
+     ]
+    ],
+    "size": [
+     163,
+     19
+    ]
+   }
+  ]
+ },
+ "local-2265b2197a3d4d76": {
+  "eps": 4,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 3,
+    "positions": [
+     [
+      38,
+      1387
+     ],
+     [
+      52,
+      355
+     ],
+     [
+      54,
+      1060
+     ]
+    ],
+    "size": [
+     224,
+     18
+    ]
+   }
+  ]
+ },
+ "local-256fdd8d5e437b0e": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-296ef9d9a0fbc43f": {
+  "eps": 4,
+  "wm": false,
+  "detail": []
+ },
+ "local-2b3114f0b1490cc1": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 4,
+    "positions": [
+     [
+      160,
+      145
+     ],
+     [
+      184,
+      209
+     ],
+     [
+      373,
+      730
+     ],
+     [
+      444,
+      932
+     ]
+    ],
+    "size": [
+     162,
+     15
+    ]
+   }
+  ]
+ },
+ "local-2be50634c0bd9dfa": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-2dc65685c77222c7": {
+  "eps": 15,
+  "wm": false,
+  "detail": []
+ },
+ "local-2e513a13d934f942": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-2eca1e0ea4d99bda": {
+  "eps": 8,
+  "wm": false,
+  "detail": []
+ },
+ "local-3149389bddf2e659": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 5,
+    "positions": [
+     [
+      171,
+      173
+     ],
+     [
+      203,
+      272
+     ],
+     [
+      237,
+      328
+     ],
+     [
+      278,
+      470
+     ],
+     [
+      452,
+      192
+     ]
+    ],
+    "size": [
+     162,
+     16
+    ]
+   }
+  ]
+ },
+ "local-31843bfd6cac1d30": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-3220a9a14d8959ff": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-33983e9975f6b62a": {
+  "eps": 1,
+  "wm": false,
+  "detail": []
+ },
+ "local-344b217c238af6ca": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-36060ff6a5ef9210": {
+  "eps": 3,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91crdj.com",
+    "frames": 8,
+    "positions": [
+     [
+      118,
+      28
+     ],
+     [
+      118,
+      29
+     ],
+     [
+      118,
+      35
+     ],
+     [
+      118,
+      1629
+     ],
+     [
+      119,
+      28
+     ],
+     [
+      119,
+      1622
+     ],
+     [
+      766,
+      34
+     ],
+     [
+      767,
+      28
+     ]
+    ],
+    "size": [
+     227,
+     44
+    ]
+   },
+   {
+    "text": "91CRDJ.COM",
+    "frames": 7,
+    "positions": [
+     [
+      252,
+      650
+     ],
+     [
+      254,
+      1399
+     ],
+     [
+      440,
+      952
+     ],
+     [
+      503,
+      869
+     ],
+     [
+      577,
+      712
+     ],
+     [
+      814,
+      1548
+     ],
+     [
+      827,
+      181
+     ]
+    ],
+    "size": [
+     159,
+     15
+    ]
+   }
+  ]
+ },
+ "local-36bffa4064cda498": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-3ac564d1066fe720": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-3b5e35406f3cc1f9": {
+  "eps": 15,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91crdj.com",
+    "frames": 6,
+    "positions": [
+     [
+      118,
+      1845
+     ],
+     [
+      119,
+      35
+     ],
+     [
+      766,
+      35
+     ],
+     [
+      766,
+      1824
+     ],
+     [
+      767,
+      35
+     ],
+     [
+      767,
+      1824
+     ]
+    ],
+    "size": [
+     221,
+     69
+    ]
+   }
+  ]
+ },
+ "local-3cd3a843b470df45": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 3,
+    "positions": [
+     [
+      253,
+      400
+     ],
+     [
+      383,
+      818
+     ],
+     [
+      432,
+      898
+     ]
+    ],
+    "size": [
+     161,
+     15
+    ]
+   }
+  ]
+ },
+ "local-3d8a8b938083dd00": {
+  "eps": 5,
+  "wm": false,
+  "detail": []
+ },
+ "local-439ce085a38e9e71": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 7,
+    "positions": [
+     [
+      273,
+      458
+     ],
+     [
+      300,
+      532
+     ],
+     [
+      319,
+      626
+     ],
+     [
+      430,
+      959
+     ],
+     [
+      431,
+      897
+     ],
+     [
+      488,
+      1054
+     ],
+     [
+      522,
+      1157
+     ]
+    ],
+    "size": [
+     163,
+     16
+    ]
+   },
+   {
+    "text": "AXA",
+    "frames": 4,
+    "positions": [
+     [
+      300,
+      492
+     ],
+     [
+      318,
+      585
+     ],
+     [
+      433,
+      918
+     ],
+     [
+      521,
+      1117
+     ]
+    ],
+    "size": [
+     71,
+     53
+    ]
+   }
+  ]
+ },
+ "local-4ac3eb78f6dafa13": {
+  "eps": 8,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91crdj.com",
+    "frames": 6,
+    "positions": [
+     [
+      152,
+      45
+     ],
+     [
+      152,
+      46
+     ],
+     [
+      1444,
+      31
+     ],
+     [
+      1444,
+      45
+     ],
+     [
+      1444,
+      981
+     ],
+     [
+      1445,
+      45
+     ]
+    ],
+    "size": [
+     290,
+     74
+    ]
+   }
+  ]
+ },
+ "local-4bee3dd165d77a5f": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-54bdfd3ac9e49231": {
+  "eps": 1,
+  "wm": false,
+  "detail": []
+ },
+ "local-55691e53e277150e": {
+  "eps": 3,
+  "wm": false,
+  "detail": []
+ },
+ "local-57f8a35d709c5ad2": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-5a99ced54fe245f7": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 4,
+    "positions": [
+     [
+      109,
+      216
+     ],
+     [
+      142,
+      995
+     ],
+     [
+      162,
+      172
+     ],
+     [
+      196,
+      748
+     ]
+    ],
+    "size": [
+     226,
+     18
+    ]
+   }
+  ]
+ },
+ "local-5bd56298ee3de195": {
+  "eps": 1,
+  "wm": false,
+  "detail": []
+ },
+ "local-5c48fb6b989bf43d": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91crdj.com",
+    "frames": 7,
+    "positions": [
+     [
+      118,
+      28
+     ],
+     [
+      118,
+      35
+     ],
+     [
+      119,
+      36
+     ],
+     [
+      119,
+      1842
+     ],
+     [
+      766,
+      35
+     ],
+     [
+      767,
+      35
+     ],
+     [
+      767,
+      1835
+     ]
+    ],
+    "size": [
+     226,
+     43
+    ]
+   },
+   {
+    "text": "91CRDJ.COM",
+    "frames": 4,
+    "positions": [
+     [
+      415,
+      1029
+     ],
+     [
+      556,
+      848
+     ],
+     [
+      787,
+      1640
+     ],
+     [
+      795,
+      1712
+     ]
+    ],
+    "size": [
+     160,
+     31
+    ]
+   }
+  ]
+ },
+ "local-6350104bdbcc3636": {
+  "eps": 8,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91crdj.com",
+    "frames": 6,
+    "positions": [
+     [
+      118,
+      14
+     ],
+     [
+      118,
+      27
+     ],
+     [
+      119,
+      1824
+     ],
+     [
+      119,
+      1837
+     ],
+     [
+      766,
+      1828
+     ],
+     [
+      766,
+      1845
+     ]
+    ],
+    "size": [
+     242,
+     82
+    ]
+   }
+  ]
+ },
+ "local-64541e34e0c9726a": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 3,
+    "positions": [
+     [
+      186,
+      227
+     ],
+     [
+      224,
+      297
+     ],
+     [
+      318,
+      930
+     ]
+    ],
+    "size": [
+     162,
+     15
+    ]
+   }
+  ]
+ },
+ "local-66f6f30ee6fe6e83": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 3,
+    "positions": [
+     [
+      132,
+      65
+     ],
+     [
+      198,
+      242
+     ],
+     [
+      214,
+      293
+     ]
+    ],
+    "size": [
+     162,
+     31
+    ]
+   }
+  ]
+ },
+ "local-6cabe72fc4a986ea": {
+  "eps": 5,
+  "wm": false,
+  "detail": []
+ },
+ "local-6e0969a51f69f6b5": {
+  "eps": 10,
+  "wm": false,
+  "detail": []
+ },
+ "local-721438cba973ad5a": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 6,
+    "positions": [
+     [
+      150,
+      99
+     ],
+     [
+      181,
+      187
+     ],
+     [
+      239,
+      341
+     ],
+     [
+      399,
+      724
+     ],
+     [
+      461,
+      879
+     ],
+     [
+      514,
+      1106
+     ]
+    ],
+    "size": [
+     159,
+     16
+    ]
+   }
+  ]
+ },
+ "local-7a50917062233240": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-7b9b61bbda7641cd": {
+  "eps": 4,
+  "wm": false,
+  "detail": []
+ },
+ "local-7dfdf16e8ad3ed13": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-7f0c58d26132f720": {
+  "eps": 3,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91crdj.com",
+    "frames": 7,
+    "positions": [
+     [
+      118,
+      35
+     ],
+     [
+      119,
+      11
+     ],
+     [
+      119,
+      1843
+     ],
+     [
+      767,
+      35
+     ],
+     [
+      767,
+      1844
+     ]
+    ],
+    "size": [
+     228,
+     42
+    ]
+   }
+  ]
+ },
+ "local-90e043880bde42ff": {
+  "eps": 4,
+  "wm": false,
+  "detail": []
+ },
+ "local-915f6e64c4388839": {
+  "eps": 27,
+  "wm": true,
+  "detail": [
+   {
+    "text": "TGHZ@Air",
+    "frames": 3,
+    "positions": [
+     [
+      91,
+      644
+     ],
+     [
+      349,
+      81
+     ],
+     [
+      991,
+      276
+     ]
+    ],
+    "size": [
+     77,
+     18
+    ]
+   }
+  ]
+ },
+ "local-98c4b4872c92ea66": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-9bdde925b9ff6df4": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-9bf7b186a44938a8": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91crdj.com",
+    "frames": 10,
+    "positions": [
+     [
+      170,
+      41
+     ],
+     [
+      170,
+      50
+     ],
+     [
+      170,
+      52
+     ],
+     [
+      170,
+      966
+     ],
+     [
+      1424,
+      50
+     ],
+     [
+      1424,
+      962
+     ],
+     [
+      1424,
+      969
+     ]
+    ],
+    "size": [
+     323,
+     62
+    ]
+   }
+  ]
+ },
+ "local-a01b6fbc81965482": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-a4cebe3c4c660bce": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-a6e518355cb37642": {
+  "eps": 3,
+  "wm": false,
+  "detail": []
+ },
+ "local-a768b168b1a91bc8": {
+  "eps": 4,
+  "wm": false,
+  "detail": []
+ },
+ "local-a891e24715085436": {
+  "eps": 1,
+  "wm": false,
+  "detail": []
+ },
+ "local-a902ec72a8b60ee9": {
+  "eps": 1,
+  "wm": false,
+  "detail": []
+ },
+ "local-ade89476c5b1d4fb": {
+  "eps": 6,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91crdj.com",
+    "frames": 7,
+    "positions": [
+     [
+      107,
+      32
+     ],
+     [
+      107,
+      1210
+     ],
+     [
+      437,
+      32
+     ],
+     [
+      438,
+      1210
+     ]
+    ],
+    "size": [
+     204,
+     39
+    ]
+   }
+  ]
+ },
+ "local-ae43a4dcba470291": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91crdj.com",
+    "frames": 6,
+    "positions": [
+     [
+      107,
+      31
+     ],
+     [
+      107,
+      1207
+     ],
+     [
+      437,
+      31
+     ]
+    ],
+    "size": [
+     204,
+     39
+    ]
+   }
+  ]
+ },
+ "local-aeec801f6b6b3306": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-af92517e6c3027df": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 3,
+    "positions": [
+     [
+      178,
+      197
+     ],
+     [
+      411,
+      838
+     ],
+     [
+      508,
+      1109
+     ]
+    ],
+    "size": [
+     161,
+     15
+    ]
+   }
+  ]
+ },
+ "local-b27c6cb28fc94c76": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 3,
+    "positions": [
+     [
+      141,
+      82
+     ],
+     [
+      197,
+      244
+     ],
+     [
+      261,
+      424
+     ]
+    ],
+    "size": [
+     161,
+     29
+    ]
+   }
+  ]
+ },
+ "local-b7328d6be31dc40c": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-b9ef1813d8308351": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 3,
+    "positions": [
+     [
+      154,
+      116
+     ],
+     [
+      252,
+      399
+     ],
+     [
+      458,
+      883
+     ]
+    ],
+    "size": [
+     162,
+     16
+    ]
+   }
+  ]
+ },
+ "local-bc29ddcaf597f0f2": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91crdj.com",
+    "frames": 8,
+    "positions": [
+     [
+      133,
+      39
+     ],
+     [
+      138,
+      37
+     ],
+     [
+      727,
+      32
+     ],
+     [
+      727,
+      39
+     ],
+     [
+      727,
+      40
+     ],
+     [
+      727,
+      1833
+     ]
+    ],
+    "size": [
+     255,
+     48
+    ]
+   },
+   {
+    "text": "91CRDJ.COM",
+    "frames": 5,
+    "positions": [
+     [
+      207,
+      1726
+     ],
+     [
+      260,
+      353
+     ],
+     [
+      452,
+      1097
+     ],
+     [
+      699,
+      467
+     ],
+     [
+      767,
+      1648
+     ]
+    ],
+    "size": [
+     185,
+     17
+    ]
+   }
+  ]
+ },
+ "local-bf2b0520811f423d": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-c071b884e64909b4": {
+  "eps": 3,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 6,
+    "positions": [
+     [
+      141,
+      1052
+     ],
+     [
+      160,
+      262
+     ],
+     [
+      253,
+      372
+     ],
+     [
+      253,
+      1148
+     ],
+     [
+      300,
+      1044
+     ],
+     [
+      304,
+      1111
+     ]
+    ],
+    "size": [
+     212,
+     27
+    ]
+   }
+  ]
+ },
+ "local-c100efc8700299d7": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-c39f817029b7de95": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 4,
+    "positions": [
+     [
+      458,
+      1039
+     ],
+     [
+      489,
+      964
+     ],
+     [
+      522,
+      252
+     ],
+     [
+      522,
+      870
+     ]
+    ],
+    "size": [
+     162,
+     29
+    ]
+   }
+  ]
+ },
+ "local-c65f8abad338acd1": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-ca920b8819315d4b": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-cb2d53f10348ab9f": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-cc3963225e6aaf77": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 5,
+    "positions": [
+     [
+      170,
+      154
+     ],
+     [
+      422,
+      854
+     ],
+     [
+      453,
+      1013
+     ],
+     [
+      458,
+      955
+     ],
+     [
+      519,
+      262
+     ]
+    ],
+    "size": [
+     159,
+     15
+    ]
+   },
+   {
+    "text": "AXA",
+    "frames": 3,
+    "positions": [
+     [
+      169,
+      114
+     ],
+     [
+      425,
+      818
+     ],
+     [
+      452,
+      973
+     ]
+    ],
+    "size": [
+     76,
+     32
+    ]
+   }
+  ]
+ },
+ "local-cc3d0855ea9e1b53": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-d06e676eb13be48c": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "AXA",
+    "frames": 4,
+    "positions": [
+     [
+      261,
+      340
+     ],
+     [
+      342,
+      610
+     ],
+     [
+      481,
+      905
+     ],
+     [
+      521,
+      1173
+     ]
+    ],
+    "size": [
+     71,
+     53
+    ]
+   },
+   {
+    "text": "91CRDJ.COM",
+    "frames": 3,
+    "positions": [
+     [
+      258,
+      415
+     ],
+     [
+      343,
+      651
+     ],
+     [
+      370,
+      663
+     ]
+    ],
+    "size": [
+     162,
+     16
+    ]
+   }
+  ]
+ },
+ "local-d154fc4af29b972a": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 4,
+    "positions": [
+     [
+      151,
+      112
+     ],
+     [
+      173,
+      177
+     ],
+     [
+      259,
+      897
+     ],
+     [
+      347,
+      661
+     ]
+    ],
+    "size": [
+     162,
+     15
+    ]
+   },
+   {
+    "text": "AXA",
+    "frames": 3,
+    "positions": [
+     [
+      172,
+      137
+     ],
+     [
+      214,
+      231
+     ],
+     [
+      346,
+      621
+     ]
+    ],
+    "size": [
+     76,
+     53
+    ]
+   }
+  ]
+ },
+ "local-d5c6c8d18e61232c": {
+  "eps": 3,
+  "wm": false,
+  "detail": []
+ },
+ "local-dadfe94e764c0a08": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91crdj.com",
+    "frames": 8,
+    "positions": [
+     [
+      134,
+      39
+     ],
+     [
+      134,
+      40
+     ],
+     [
+      728,
+      39
+     ],
+     [
+      728,
+      1833
+     ]
+    ],
+    "size": [
+     253,
+     48
+    ]
+   }
+  ]
+ },
+ "local-dbf256998dfb22f6": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-e9f881d505f9b4f5": {
+  "eps": 1,
+  "wm": false,
+  "detail": []
+ },
+ "local-ea7229a40fe28d46": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91crdj.com",
+    "frames": 10,
+    "positions": [
+     [
+      112,
+      24
+     ],
+     [
+      112,
+      27
+     ],
+     [
+      112,
+      31
+     ],
+     [
+      112,
+      1179
+     ],
+     [
+      112,
+      1185
+     ],
+     [
+      113,
+      1185
+     ],
+     [
+      436,
+      31
+     ],
+     [
+      436,
+      1185
+     ]
+    ],
+    "size": [
+     200,
+     58
+    ]
+   }
+  ]
+ },
+ "local-ecc706cf0614f6f7": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91CRDJ.COM",
+    "frames": 3,
+    "positions": [
+     [
+      38,
+      771
+     ],
+     [
+      164,
+      149
+     ],
+     [
+      293,
+      509
+     ]
+    ],
+    "size": [
+     162,
+     30
+    ]
+   }
+  ]
+ },
+ "local-ee1e2867e9c9f5f0": {
+  "eps": 1,
+  "wm": false,
+  "detail": []
+ },
+ "local-f01af1a50bf69c16": {
+  "eps": 1,
+  "wm": false,
+  "detail": []
+ },
+ "local-f19b91ae0684d956": {
+  "eps": 3,
+  "wm": false,
+  "detail": []
+ },
+ "local-f20281801971cba9": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-f37295c6e505f8fb": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-f38bc0111fd001a3": {
+  "eps": 10,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91crdj.com",
+    "frames": 12,
+    "positions": [
+     [
+      133,
+      39
+     ],
+     [
+      134,
+      39
+     ],
+     [
+      134,
+      40
+     ],
+     [
+      727,
+      11
+     ],
+     [
+      727,
+      39
+     ],
+     [
+      728,
+      16
+     ],
+     [
+      728,
+      39
+     ],
+     [
+      728,
+      1825
+     ]
+    ],
+    "size": [
+     254,
+     49
+    ]
+   },
+   {
+    "text": "91CRDJ.COM",
+    "frames": 3,
+    "positions": [
+     [
+      184,
+      157
+     ],
+     [
+      317,
+      75
+     ],
+     [
+      671,
+      1404
+     ]
+    ],
+    "size": [
+     185,
+     17
+    ]
+   }
+  ]
+ },
+ "local-f630daa6de0b88a9": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ },
+ "local-f6bc215700716657": {
+  "eps": 22,
+  "wm": false,
+  "detail": []
+ },
+ "local-f8593b10f3c4e699": {
+  "eps": 2,
+  "wm": true,
+  "detail": [
+   {
+    "text": "91crdj.com",
+    "frames": 6,
+    "positions": [
+     [
+      107,
+      27
+     ],
+     [
+      107,
+      1207
+     ],
+     [
+      437,
+      27
+     ],
+     [
+      437,
+      31
+     ],
+     [
+      437,
+      32
+     ],
+     [
+      437,
+      1207
+     ]
+    ],
+    "size": [
+     204,
+     39
+    ]
+   }
+  ]
+ },
+ "local-f9e61c194c5bfc76": {
+  "eps": 1,
+  "wm": false,
+  "detail": []
+ },
+ "local-fa11aefc8d5865e4": {
+  "eps": 2,
+  "wm": false,
+  "detail": []
+ }
+}
