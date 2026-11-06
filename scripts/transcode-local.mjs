@@ -18,6 +18,7 @@
  */
 import fs from 'node:fs'
 import path from 'node:path'
+import { createHash } from 'node:crypto'
 import { spawn } from 'node:child_process'
 import { fileURLToPath } from 'node:url'
 import { parseArgs } from 'node:util'
@@ -127,11 +128,39 @@ function transcode(task) {
       ff.stderr.on('data', (d) => { err += d })
       ff.on('error', () => resolve({ ...task, ok: false, error: 'ffmpeg-missing' }))
       ff.on('close', (code) => {
-        if (code === 0 && fs.existsSync(path.join(dest, 'index.m3u8'))) resolve({ ...task, ok: true })
+        if (code === 0 && fs.existsSync(path.join(dest, 'index.m3u8'))) {
+          // 分片是 immutable 长缓存，重转后必须换 URL 才能让客户端拿到新内容
+          versionSegments(dest)
+          resolve({ ...task, ok: true })
+        }
         else resolve({ ...task, ok: false, error: `exit=${code} ${err.slice(-300)}` })
       })
     })
   })
+}
+
+/**
+ * 给 index.m3u8 里的分片名加 ?v=<版本> 查询串。
+ *
+ * S3 上的 .ts 下发的是 `public, max-age=31536000, immutable`，
+ * 重转上传后同名分片在浏览器/中间 CDN 仍是旧的水印版本。
+ * 加版本串后 URL 变了，缓存自然失效；服务端中转会忽略查询串。
+ */
+function versionSegments(dest) {
+  const m3u8 = path.join(dest, 'index.m3u8')
+  let text = fs.readFileSync(m3u8, 'utf8')
+  const segs = fs.readdirSync(dest).filter((f) => /^seg_\d+\.ts$/.test(f))
+  if (!segs.length) return
+  // 用首片 + 末片的大小与修改时间做版本指纹
+  const stamp = [segs[0], segs[segs.length - 1]]
+    .map((f) => {
+      const st = fs.statSync(path.join(dest, f))
+      return `${f}:${st.size}:${Math.floor(st.mtimeMs)}`
+    })
+    .join('|')
+  const version = createHash('sha1').update(stamp).digest('hex').slice(0, 8)
+  text = text.replace(/^(seg_\d+\.ts)$/gm, `$1?v=${version}`)
+  fs.writeFileSync(m3u8, text)
 }
 
 const parallel = Math.max(1, Number(values.parallel) || 4)

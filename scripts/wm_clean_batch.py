@@ -15,7 +15,7 @@ import os
 import subprocess
 import sys
 import time
-from concurrent.futures import ThreadPoolExecutor
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 IMPORTED = os.path.join(ROOT, 'media', 'imported')
@@ -30,7 +30,9 @@ def load_targets(all_dramas=False, only=None):
         ids = only
     else:
         scan = json.load(open(SCAN))
-        ids = [k for k, v in scan.items() if v.get('watermark')]
+        # 兼容两种扫描结果格式：{"watermark": bool} / {"wm": bool}
+        ids = [k for k, v in scan.items()
+               if v.get('watermark') or v.get('wm')]
         if all_dramas:
             ids = list(scan.keys())
     tasks = []
@@ -81,18 +83,28 @@ def main():
     ap.add_argument('--work', action='append', default=[])
     ap.add_argument('--parallel', type=int, default=3)
     ap.add_argument('--limit', type=int, default=0)
+    ap.add_argument('--dry-run', action='store_true')
     a = ap.parse_args()
     tasks = load_targets(a.all, a.work)
     if a.limit:
         tasks = tasks[:a.limit]
     print(f'待处理 {len(tasks)} 集（并发 {a.parallel}）', flush=True)
+    if a.dry_run:
+        for t in tasks[:40]:
+            print(f'  {t["id"]} {os.path.basename(t["src"])}')
+        if len(tasks) > 40:
+            print(f'  ... 其余 {len(tasks) - 40} 个')
+        return
     if not tasks:
         return
     t0 = time.time()
     done = failed = 0
     results = []
+    # as_completed：谁先跑完谁先出结果，长剧不会挡住其它集的进度显示
     with ThreadPoolExecutor(max_workers=max(1, a.parallel)) as ex:
-        for r in ex.map(run_task, tasks):
+        futures = {ex.submit(run_task, t): t for t in tasks}
+        for fut in as_completed(futures):
+            r = fut.result()
             done += 1
             if r['ok']:
                 tag = '跳过' if r.get('skipped') else '✓'
