@@ -4,7 +4,7 @@ import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
 import { api } from '../api'
 import type { Category, DramaSummary } from '../types'
 import { favorites, history } from '../storage'
-import { contentChannels, dramasForChannel } from '../navigation'
+import { contentChannels, dramasForChannel, isHotDrama, uniqueById } from '../navigation'
 import { locale, tr, translateCategory, translateMessage } from '../i18n'
 import SiteHeader from '../components/SiteHeader.vue'
 import SiteFooter from '../components/SiteFooter.vue'
@@ -95,37 +95,69 @@ const displayList = computed(() => {
       .sort((a, b) => (history.get(b.id)?.updatedAt ?? 0) - (history.get(a.id)?.updatedAt ?? 0))
   return result
 })
+/** 首页只上带 🔥 的热门剧（见 navigation.isHotDrama），重复的不再出现。 */
+const isHot = isHotDrama
 const featured = computed(() => {
-  const playable = dramas.value.filter((drama) => drama.episodeCount > 0)
-  // 新下载的欧美剧优先：集数多优先，其次按上架时间倒序、播放量倒序，取 7 部上轮播。
-  const western = playable
-    .filter((drama) => drama.channelId === 'western')
-    .sort(
-      (a, b) =>
-        b.episodeCount - a.episodeCount ||
-        (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '') ||
-        (b.views ?? 0) - (a.views ?? 0),
-    )
-    .slice(0, 7)
-  if (western.length) return western
-  return playable.slice(0, 7)
+  // 轮播：新下载的欧美多集剧 + 必须是热门（带 🔥），集数多优先，其次播放量、上架时间。
+  return uniqueById(
+    dramas.value
+      .filter((drama) => drama.episodeCount > 0 && drama.channelId === 'western' && isHot(drama))
+      .sort(
+        (a, b) =>
+          b.episodeCount - a.episodeCount ||
+          (b.views ?? 0) - (a.views ?? 0) ||
+          (b.publishedAt ?? '').localeCompare(a.publishedAt ?? ''),
+      ),
+  ).slice(0, 7)
 })
-const ranking = computed(() =>
-  [...dramas.value].sort((a, b) => (b.views ?? 0) - (a.views ?? 0)).slice(0, 15),
+/** 已在轮播出现过的剧，后面分区不再重复出现。 */
+const featuredIds = computed(() => new Set(featured.value.map((d) => d.id)))
+const ranking = computed(() => {
+  return uniqueById(
+    [...dramas.value]
+      .filter((d) => isHot(d) && !featuredIds.value.has(d.id))
+      .sort((a, b) => (b.views ?? 0) - (a.views ?? 0)),
+  ).slice(0, 15)
+})
+const rankingIds = computed(() => new Set([...featuredIds.value, ...ranking.value.map((d) => d.id)]))
+const latest = computed(() => {
+  return uniqueById(
+    [...dramas.value]
+      .filter((d) => isHot(d) && !rankingIds.value.has(d.id))
+      .sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '')),
+  ).slice(0, 15)
+})
+const latestIds = computed(() => new Set([...rankingIds.value, ...latest.value.map((d) => d.id)]))
+const topRated = computed(() => {
+  return uniqueById(
+    [...dramas.value]
+      .filter((d) => isHot(d) && !latestIds.value.has(d.id))
+      .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)),
+  ).slice(0, 15)
+})
+const homeShownIds = computed(
+  () =>
+    new Set([
+      ...featured.value.map((d) => d.id),
+      ...ranking.value.map((d) => d.id),
+      ...latest.value.map((d) => d.id),
+      ...topRated.value.map((d) => d.id),
+    ]),
 )
-const latest = computed(() =>
-  [...dramas.value].sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '')).slice(0, 15),
-)
-const topRated = computed(() =>
-  [...dramas.value].sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)).slice(0, 15),
-)
-const categorySections = computed(() =>
-  contentChannels
+const categorySections = computed(() => {
+  const taken = new Set(homeShownIds.value)
+  return contentChannels
     .filter((channel) => channel.available)
     .slice(0, 4)
-    .map((channel) => ({ channel, dramas: dramasForChannel(dramas.value, channel.id).slice(0, 15) }))
-    .filter((section) => section.dramas.length),
-)
+    .map((channel) => {
+      const list = uniqueById(
+        dramasForChannel(dramas.value, channel.id).filter((d) => isHot(d) && !taken.has(d.id)),
+      ).slice(0, 15)
+      for (const d of list) taken.add(d.id)
+      return { channel, dramas: list }
+    })
+    .filter((section) => section.dramas.length)
+})
 
 function scrollRow(event: MouseEvent, direction: -1 | 1) {
   const wrap = (event.currentTarget as HTMLElement).closest('.row-wrap')

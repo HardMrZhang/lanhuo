@@ -3,10 +3,12 @@ import { computed, ref } from 'vue'
 import type { DramaSummary } from '../types'
 import { tr } from '../i18n'
 import { favorites } from '../storage'
+import { isHotDrama } from '../navigation'
 import CoverImage from './CoverImage.vue'
 
 const props = defineProps<{ drama: DramaSummary; rank?: number }>()
 const saved = ref(favorites.has(props.drama.id))
+const hot = computed(() => isHotDrama(props.drama))
 const hasEpisodes = computed(() => props.drama.episodeCount > 0)
 const episodeText = computed(() =>
   !hasEpisodes.value
@@ -39,6 +41,7 @@ function toggleSave() {
         />
       </router-link>
       <span v-if="rank" class="rank-number" :class="{ top: rank <= 3 }">{{ rank }}</span>
+      <span v-if="hot" class="hot-badge" aria-label="热门">🔥</span>
       <span class="episode-flag">{{ episodeText }}</span>
       <div class="card-actions">
         <router-link
@@ -133,6 +136,15 @@ function toggleSave() {
 }
 .rank-number.top {
   background: var(--accent);
+}
+.hot-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  font-size: 16px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.6));
+  pointer-events: none;
 }
 /* 悬停时从底部升起播放条 */
 .card-actions {

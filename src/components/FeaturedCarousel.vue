@@ -3,6 +3,7 @@ import { computed, onActivated, onBeforeUnmount, onDeactivated, onMounted, ref, 
 import type { CSSProperties } from 'vue'
 import type { DramaSummary } from '../types'
 import { tr } from '../i18n'
+import { isHotDrama } from '../navigation'
 import CoverImage from './CoverImage.vue'
 
 const props = defineProps<{ dramas: DramaSummary[] }>()
@@ -120,6 +121,7 @@ onBeforeUnmount(stop)
             width="310"
             height="410"
           />
+          <span v-if="isHotDrama(drama)" class="hot-badge" aria-label="热门">🔥</span>
         </div>
         <router-link
           class="cover-caption"
@@ -214,6 +216,15 @@ onBeforeUnmount(stop)
   width: 100%;
   height: 100%;
   object-fit: cover;
+}
+.cover-frame .hot-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 20px;
+  line-height: 1;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.7));
+  pointer-events: none;
 }
 .cover:not(.active) .cover-frame img {
   opacity: 0.55;

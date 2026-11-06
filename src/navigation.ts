@@ -35,3 +35,15 @@ export function dramasForChannel(dramas: DramaSummary[], id: string): DramaSumma
     return !channel.categoryIds.length || channel.categoryIds.includes(drama.categoryIds[0] ?? '')
   })
 }
+
+/** 首页只上带 🔥 的热门剧：播放量达到该线才算热门，全站统一。 */
+export const HOT_VIEWS = 5000
+export function isHotDrama(drama: Pick<DramaSummary, 'views'>): boolean {
+  return (drama.views ?? 0) >= HOT_VIEWS
+}
+
+/** 按 id 去重，保持原顺序。 */
+export function uniqueById<T extends { id: string }>(list: T[]): T[] {
+  const seen = new Set<string>()
+  return list.filter((item) => (seen.has(item.id) ? false : (seen.add(item.id), true)))
+}
