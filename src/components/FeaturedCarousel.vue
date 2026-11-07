@@ -118,6 +118,7 @@ onBeforeUnmount(stop)
             :src="drama.cover"
             :alt="drama.title"
             :loading="i === 0 ? 'eager' : 'lazy'"
+            :size="360"
             width="310"
             height="410"
           />
@@ -178,14 +179,14 @@ onBeforeUnmount(stop)
 
 <style scoped>
 .hero-carousel {
-  --cover-step: 232px;
+  --cover-step: 196px;
   position: relative;
-  padding: 24px 0 0;
+  padding: 20px 0 0;
   user-select: none;
 }
 .stage {
   position: relative;
-  height: 430px;
+  height: 360px;
   overflow: hidden;
   perspective: 1100px;
   perspective-origin: 50% 50%;
@@ -195,8 +196,8 @@ onBeforeUnmount(stop)
   position: absolute;
   top: 50%;
   left: 50%;
-  width: 240px;
-  height: 320px;
+  width: 204px;
+  height: 272px;
   transform-style: preserve-3d;
   transition: transform 0.5s cubic-bezier(0.23, 1, 0.32, 1), opacity 0.5s ease;
   will-change: transform, opacity;
@@ -374,14 +375,14 @@ onBeforeUnmount(stop)
 }
 @media (max-width: 1024px) {
   .hero-carousel {
-    --cover-step: 206px;
+    --cover-step: 176px;
   }
   .stage {
-    height: 380px;
+    height: 318px;
   }
   .cover {
-    width: 214px;
-    height: 286px;
+    width: 182px;
+    height: 243px;
   }
   .hero-copy {
     max-width: 100%;
@@ -389,15 +390,15 @@ onBeforeUnmount(stop)
 }
 @media (max-width: 768px) {
   .hero-carousel {
-    --cover-step: 132px;
-    padding-top: 12px;
+    --cover-step: 112px;
+    padding-top: 10px;
   }
   .stage {
-    height: 310px;
+    height: 262px;
   }
   .cover {
-    width: 168px;
-    height: 224px;
+    width: 143px;
+    height: 190px;
   }
   .hero-foot {
     flex-direction: column;

@@ -19,7 +19,7 @@ const s3 = new S3Client({
     : {}),
 })
 
-const FILE_RE = /^local-[a-f0-9]{16}\.jpg$/
+const FILE_RE = /^local-[a-f0-9]{16}\.(jpg|jpeg|png|webp)$/
 
 export function posterKeyOf(params) {
   const file = params?.file ?? ''
@@ -33,7 +33,6 @@ export function posterContentType(file) {
   if (file.endsWith('.webp')) return 'image/webp'
   return 'application/octet-stream'
 }
-
 /**
  * 私有桶封面中转：GET /s3-posters/:file
  * - 封面与 HLS 同桶，桶策略禁止公开，故走服务端 GetObject 中转。

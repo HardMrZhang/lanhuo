@@ -36,6 +36,7 @@ function toggleSave() {
           :alt="drama.title"
           loading="lazy"
           decoding="async"
+          :size="360"
           width="300"
           height="400"
         />

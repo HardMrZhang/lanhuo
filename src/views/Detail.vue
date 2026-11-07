@@ -206,7 +206,7 @@ async function share() {
         <h1 class="detail-title">{{ drama.title }}</h1>
         <section class="detail-layout" :aria-label="tr('剧集信息', 'Series information')">
           <div class="d-poster">
-            <CoverImage :src="drama.cover" :alt="tr(`${drama.title} 海报`, `${drama.title} poster`)" />
+            <CoverImage :src="drama.cover" :alt="tr(`${drama.title} 海报`, `${drama.title} poster`)" :size="720" />
             <span v-if="drama.hd" class="poster-badge">HD</span>
           </div>
           <div class="d-info">

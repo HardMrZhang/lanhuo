@@ -140,3 +140,22 @@ test('third-party checkout redirects automatically instead of leaving the user o
   // 订单终态后清理记录，避免下次打开又回到已完结的订单。
   assert.ok(vip.includes('clearPendingOrder'), '订单终态后必须清理待支付订单记录')
 })
+
+test('list and carousel images use the webp thumbnails instead of the full-size covers', () => {
+  const cover = read('src/components/CoverImage.vue')
+  const carousel = read('src/components/FeaturedCarousel.vue')
+  const card = read('src/components/DramaCard.vue')
+  const detail = read('src/views/Detail.vue')
+
+  // 缩略图地址由原图地址推导：同目录同名 .webp。
+  assert.ok(
+    cover.includes("replace(") && cover.includes('.webp'),
+    'CoverImage 必须把封面原图地址换成 .webp 缩略图',
+  )
+  // 小图场景显式要求缩略图，详情页要原图。
+  assert.ok(carousel.includes(':size="360"'), '轮播必须用缩略图尺寸')
+  assert.ok(card.includes(':size="360"'), '剧集卡片必须用缩略图尺寸')
+  assert.ok(detail.includes(':size="720"'), '详情页必须用原图尺寸')
+  // 缩略图取不到时要能退回原图，不能直接裂图。
+  assert.ok(cover.includes('thumbFailed'), '缩略图加载失败必须能退回原图')
+})
