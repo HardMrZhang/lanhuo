@@ -191,10 +191,11 @@ npm run video:db          # 写入 MySQL 并合并 data/dramas.json
 水印在每部片源里的**字号和位置都不一样**，所以不能写死模板坐标。`scripts/wm_clean.py` 做成完全自适应：
 
 1. **OCR 采样**：在片长上均匀取 8 帧，用 tesseract 找出所有疑似水印的横条文字框；
-2. **候选择优**：每个候选框裁成模板，用 FFT-NCC 试跑追踪，命中率最高且位置分散的胜出（位置分散 = 水印在移动，排除固定字幕）；
-3. **逐帧追踪**：隔帧做 FFT-NCC 定位，中间帧线性插值，得到每帧的水印坐标；
-4. **逐帧修复**：用模板笔画蒙版（半透明叠加层的正高通残差）贴到水印位置，`cv2.inpaint`（Telea）修复；
-5. **管道编码**：修复后的帧通过管道交给 ffmpeg（libx264 / crf 18），避免 OpenCV `mp4v` 的二次有损压缩。
+2. **候选择优**：按宽度归并候选（OCR 常只读出 "COM" 片段，必须取最宽的完整水印），再用 FFT-NCC 试跑追踪，命中率最高且位置分散的胜出（位置分散 = 水印在移动，排除固定字幕）；
+3. **多水印并行**：一部分片源同时叠了两支不同尺寸的水印（画面四角的 255x48 大水印 + 一支在画面里游走的 185x17 小水印），宽度差异超过 40% 的候选会被当作独立水印分别追踪修复；
+4. **多实例追踪**：同一支水印常同时印在画面四个角落，逐实例（`locate_all`）跟踪并归并到各条轨迹；
+5. **逐帧修复**：从模板提取笔画蒙版（半透明叠加层的**正负**高通残差 —— 有的是加亮有的是压暗），贴到每帧的水印位置，只在该小块区域做 `cv2.inpaint`（Telea）修复；
+6. **管道编码**：修复后的帧通过管道交给 ffmpeg（libx264 / crf 18），避免 OpenCV `mp4v` 的二次有损压缩。
 
 ```bash
 # 准备环境（OpenCV 不装到系统 Python，避免污染全局）
@@ -204,7 +205,7 @@ python3 -m venv .venv-wm
 # 检测某部剧有没有水印（跨帧复现的文本 token 判定，不依赖水印具体文字）
 .venv-wm/bin/python scripts/wm_detect3.py <video.mp4>
 
-# 单集去水印
+# 单集去水印（--dry-run 只打印检测到的水印与轨迹，不编码）
 .venv-wm/bin/python scripts/wm_clean.py <video.mp4> -o clean.mp4
 
 # 扫描 media/imported 全部剧，标记有水印的（写 data/watermark-scan.json）
@@ -213,18 +214,26 @@ python3 -m venv .venv-wm
 # 批量去水印 -> media/clean/<dramaId>/episode-N.mp4
 .venv-wm/bin/python scripts/wm_clean_batch.py --parallel 4
 
+# 重建用旧算法生成的产物（算法升级后重跑残留集）
+.venv-wm/bin/python scripts/wm_clean_rebuild_stale.py --list
+.venv-wm/bin/python scripts/wm_clean_rebuild_stale.py --parallel 2
+
 # 用去水印后的源重转 HLS（对有 clean 源的集强制重转）
 node scripts/transcode-local.mjs --dry-run
 node scripts/transcode-local.mjs --parallel 4
 
 # 重传 S3（--force 覆盖旧分片）
 node scripts/upload-local-s3.mjs --force
+
+# 或者一步跑完：去水印 -> 重建 -> 重转 HLS -> 重传 S3
+bash scripts/pipeline-dewatermark.sh
 ```
 
 去水印后的源放在 `media/clean/<dramaId>/`，`scripts/video-transcode.mjs` 与 `scripts/transcode-local.mjs` 都会优先使用它（存在即用，并在 dry-run 输出里标 `[已去水印]`）。转码后按原有流程上传 S3 即可。
 
 > **缓存注意**：S3 上的 `.ts` 分片是 `immutable` 长缓存，重传后浏览器仍可能命中旧分片。
-> 换批视频后需要让客户端强制刷新，或给分片路径带上版本号（如 `seg_0000.ts?v=2`）。
+> `scripts/transcode-local.mjs` 在转码后会自动给 `index.m3u8` 里的每个分片追加 `?v=<hash>` 版本串，
+> URL 变了缓存自然失效；服务端中转会忽略查询串照常取 S3 对象。
 
 多码率 HLS 的产物是 `episode-N/<tier>/index.m3u8`，服务端中转已支持档位子目录：`/s3-hls/<dramaId>/episode-N/720p/seg_0000.ts`。
 

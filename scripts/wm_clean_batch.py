@@ -51,7 +51,9 @@ def load_targets(all_dramas=False, only=None):
 
 def run_task(task):
     os.makedirs(os.path.dirname(task['dest']), exist_ok=True)
-    tmp = task['dest'] + '.tmp.mp4'
+    # 临时文件名带进程号：多个批次并行跑时不会互相覆盖同一个 .tmp.mp4
+    # （覆盖会导致 ffmpeg faststart 收尾时 re-open 输出文件失败）
+    tmp = f"{task['dest']}.tmp.{os.getpid()}.mp4"
     try:
         r = subprocess.run([PY, CLEANER, task['src'], '-o', tmp],
                            capture_output=True, text=True, timeout=3600)
