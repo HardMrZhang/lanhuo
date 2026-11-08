@@ -52,6 +52,8 @@ const sandboxBase = baseUrl(process.env.VAEHUB_SANDBOX_API_BASE)
 // 沙箱凭据独立配置：测试环境的 App Key / Secret 通常与生产不同。
 const sandboxAppKey = process.env.VAEHUB_SANDBOX_APP_KEY?.trim()
 const sandboxAppSecret = process.env.VAEHUB_SANDBOX_APP_SECRET?.trim()
+// 支付方式代码（PAYNOW_B2C / CASHAPP 等）：不填则由 VaeHub 自动选择。
+const paycode = process.env.VAEHUB_PAYCODE?.trim() || ''
 
 if (!base && !sandboxBase) {
   console.error('✗ VAEHUB_API_BASE / VAEHUB_SANDBOX_API_BASE 未配置或格式不正确（需含协议，如 https://xxx.top/api）')
@@ -89,6 +91,8 @@ const body = pingOnly
     return_type: 'cashier',
     user_hash: createHash('sha256').update('probe-user').digest('hex').slice(0, 32),
   }
+// 支付方式代码：与 server/vip.js 保持一致，不填则不传，由平台自动选择。
+if (!pingOnly && paycode) body.paycode = paycode
 if (!pingOnly && mockRes) body.mock_res = mockRes
 
 let response
