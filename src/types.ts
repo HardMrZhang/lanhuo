@@ -35,4 +35,12 @@ export interface Drama {
 }
 
 /** 列表接口返回的精简版（不含 episodes） */
-export type DramaSummary = Omit<Drama, 'episodes'> & { episodeCount: number }
+export interface DramaSummary extends Omit<Drama, 'episodes'> {
+  episodeCount: number
+}
+
+/** 推荐位：后台配置的区块与其中的剧。 */
+export interface RecommendSlot {
+  key: string
+  items: { dramaId: string; weight: number }[]
+}

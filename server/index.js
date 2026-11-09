@@ -9,6 +9,12 @@ import { createVipRouter } from './vip.js'
 import { createS3HlsHandler } from './s3hls.js'
 import { createS3PosterHandler } from './s3posters.js'
 import { FREE_EPISODES, isEpisodeLocked, lockedMediaPaths } from './access.js'
+import { createReferralService, initReferralSchema } from './referral.js'
+import { createReferralRouter } from './referral-router.js'
+import { createAdminAuth, initAdminSchema, requireSameOrigin } from './admin/auth.js'
+import { createPaymentAdminRouter } from './admin/payment.js'
+import { createRecommendAdminRouter, initRecommendSchema, createRecommendReader } from './admin/recommend.js'
+import { createSharedPool, ensureDatabase, mysqlConfig } from './db.js'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const ROOT = path.resolve(__dirname, '..')
@@ -33,6 +39,49 @@ app.disable('x-powered-by')
 app.use(compression({ filter: (req, res) => !/\.(ts|m4s|mp4)$/.test(req.path) && compression.filter(req, res) }))
 const vip = await createVipRouter()
 app.use('/api', vip)
+
+// ---------- 邀请 / 后台共享的数据层 ----------
+// 邀请模块、两个后台与会员模块共用同一个 MySQL 库，但各自建立连接池：
+// 后台与前台流量特征不同，混在一个池里会让后台的慢查询拖住用户下单。
+const sharedConfig = mysqlConfig(process.env)
+await ensureDatabase(sharedConfig)
+const referralPool = createSharedPool(process.env)
+const adminPool = createSharedPool(process.env)
+
+await initAdminSchema(adminPool)
+await initReferralSchema(referralPool)
+await initRecommendSchema(adminPool)
+
+const referralService = createReferralService({ pool: referralPool })
+app.use('/api/referral', createReferralRouter({ referralService }))
+
+// 前台推荐位读取器：首页按后台配置渲染推荐位。
+const readRecommendSlots = createRecommendReader({ pool: adminPool })
+
+// ---------- 两个独立后台 ----------
+// 支付后台与推荐后台各自独立：独立路径、独立 Cookie、独立管理员角色。
+// 后台账号存在 admin_users 表里，与前台会员账号完全隔离。
+const paymentAdminAuth = createAdminAuth({
+  pool: adminPool,
+  allowedRoles: ['payment', 'super'],
+  cookieName: 'duanju_admin_payment',
+  production: isProd,
+})
+const recommendAdminAuth = createAdminAuth({
+  pool: adminPool,
+  allowedRoles: ['referral', 'super'],
+  cookieName: 'duanju_admin_recommend',
+  production: isProd,
+})
+const paymentAdminRouter = createPaymentAdminRouter({ pool: adminPool, referralService })
+const recommendAdminRouter = createRecommendAdminRouter({ pool: adminPool })
+// 预置推荐位（幂等），首次启动时把首页分区落成可配置的推荐位。
+await recommendAdminRouter.__seedSlots()
+
+app.use('/admin-api/payment', requireSameOrigin, paymentAdminAuth)
+app.use('/admin-api/payment', paymentAdminAuth.__requireAdmin, paymentAdminRouter)
+app.use('/admin-api/recommend', requireSameOrigin, recommendAdminAuth)
+app.use('/admin-api/recommend', recommendAdminAuth.__requireAdmin, recommendAdminRouter)
 
 // ---------- 数据 ----------
 // 短剧库主存 MySQL（categories/dramas/episodes/drama_categories）。
@@ -139,6 +188,22 @@ app.get('/api/dramas/:id', async (req, res, next) => {
   } catch (error) { next(error) }
 })
 
+// ---------- 推荐位（前台） ----------
+// 后台配置的推荐位：返回每个启用位里的剧 id 与权重。
+// 前台按位渲染，没配置的位回落到原有排序逻辑。
+app.get('/api/recommend/slots', async (_req, res) => {
+  try {
+    const slots = await readRecommendSlots()
+    res.set('Cache-Control', 'public, max-age=30')
+    res.json({ slots })
+  } catch (error) {
+    // 推荐位读失败不能影响首页可用性：返回空列表，前台走默认逻辑。
+    console.error('[recommend] read slots failed:', error?.message || error)
+    res.set('Cache-Control', 'public, max-age=30')
+    res.json({ slots: [] })
+  }
+})
+
 app.use('/api', (_req, res) => res.status(404).json({ error: '接口不存在' }))
 
 // ---------- S3 私有桶 HLS 中转 ----------
@@ -198,6 +263,8 @@ app.use('/media', async (req, res, next) => {
 
 // ---------- 生产环境托管前端 ----------
 if (isProd && fs.existsSync(DIST_DIR)) {
+  // 用户端与后台共用同一个 SPA 入口，后台走 /admin/* 路由，
+  // 所以这里只需要托管静态资源 + SPA 兜底。
   app.use(express.static(DIST_DIR, { index: false, maxAge: '1y', immutable: true }))
   app.get('*', (_req, res) => {
     res.set('Cache-Control', 'no-cache')

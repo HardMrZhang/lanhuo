@@ -84,6 +84,44 @@ npm test           # 导入回归测试 + 会员/支付安全与幂等测试
 npm run build      # TypeScript 检查与生产构建
 ```
 
+## 邀请与运营后台
+
+### 邀请模块
+
+前台 `/invite` 是用户的邀请页：顶部是专属邀请码与复制按钮，下方是邀请人数与邀请记录（对方邮箱脱敏显示），底部是活动规则与条款。
+
+邀请关系只做**来源统计**，不发放任何奖励（无邀请奖励、无天数赠送）。实现方式：
+
+- 每个登录用户自动生成唯一邀请码（`referral_codes` 表），邀请链接形如 `/?ref=邀请码`。
+- 访问带 `?ref=` 的链接时邀请码先暂存在本地，用户注册或提交订单时自动绑定（`referral_relations` 表），也支持在邀请页手动填写邀请码绑定。
+- 绑定是**一次性**的：首个有效邀请码生效，之后不再改写；系统禁止自己邀请自己，也禁止形成邀请环。
+- 邮箱在邀请记录里脱敏展示（如 `zh***@example.com`），完整邮箱只在后台可见。
+
+### 两个运营后台
+
+后台与前台共用同一个 SPA 入口（不再单独产出 HTML 文件），通过路由区分：
+
+| 后台 | 地址 | 接口前缀 | 会话 Cookie | 可访问角色 |
+|---|---|---|---|---|
+| 支付管理后台 | `/admin/payment` | `/admin-api/payment` | `duanju_admin_payment` | `payment`、`super` |
+| 推荐系统后台 | `/admin/recommend` | `/admin-api/recommend` | `duanju_admin_recommend` | `referral`、`super` |
+
+两个后台**各自独立登录**（不同 Cookie、不同角色授权），同时打开互不顶号；支付角色进不了推荐后台，反之亦然。管理员账号存在 `admin_users` 表，与前台会员账号（`vip_users`）完全隔离——不复用用户表的登录态，普通会员账号无法通过加字段提权。
+
+创建管理员：
+
+```bash
+npm run admin:create -- --username admin --password '强密码' --role super --name 超级管理员
+```
+
+角色：`payment`（仅支付后台）、`referral`（仅推荐后台）、`super`（两个都能进）。
+
+**支付管理后台**：数据概览（订单量、收入、近 30 天趋势、按通道/状态分布）、订单管理（按状态/通道/关键词筛选与分页）、人工核实队列（确认到账 / 确认未到账，走与支付回调同一套订单状态机）、会员用户列表与手动补单、邀请数据统计。
+
+**推荐系统后台**：推荐位（slot）增删改查与启停、权重与展示条数配置、位内条目（item）的增删改查与排序、剧集下拉选择。首页按推荐位渲染，位内条目按「顺序值降序 → 权重降序」取前 N 条；没有配置条目的位回落到首页原有排序逻辑。后台配的剧通过 `GET /api/recommend/slots` 推给前台。
+
+后台使用 Element Plus 组件库，按需自动导入（`unplugin-vue-components` + `unplugin-auto-import`），只有访问 `/admin/*` 时才会加载对应 chunk，用户端首屏不为此付出体积代价。
+
 ## 中英文界面
 
 点击页头的 `EN` / `中文` 切换界面语言，播放器中也提供切换入口。选择会保存在当前浏览器，刷新或跳转页面后保留；切换语言不重置登录、搜索、播放或充值订单状态。导航、账号、会员充值、详情和播放操作均支持英文。剧名、简介、标签及封面内文字保留原始内容，不自动翻译视频或字幕。
@@ -253,7 +291,14 @@ data/dramas.json     剧集与分类数据
 media/               视频文件（不入库）
 scripts/to-hls.sh    mp4 → 多码率 HLS
 server/              Express API + 静态托管
+  admin/             两个运营后台
+    auth.js          后台账号、会话与同源校验
+    payment.js       支付后台 API
+    recommend.js     推荐系统后台 API
+  referral.js        邀请码、绑定与统计
 src/                 Vue 前端
+  admin/             两个运营后台（Element Plus）
+  views/Invite.vue   用户邀请页
 ```
 
 ## 环境变量

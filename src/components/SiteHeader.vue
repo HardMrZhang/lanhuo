@@ -98,6 +98,13 @@ watch(
           :aria-current="route.name === 'vip' ? 'page' : undefined"
           >{{ tr('VIP 会员', 'VIP') }}</router-link
         >
+        <router-link
+          class="invite-link"
+          to="/invite"
+          :class="{ active: route.name === 'invite' }"
+          :aria-current="route.name === 'invite' ? 'page' : undefined"
+          >{{ tr('邀请', 'Invite') }}</router-link
+        >
         <button class="mobile-account" type="button" @click="openAccount">
           {{ account.user ? tr('我的账号', 'My Account') : tr('登录 / 注册', 'Sign in') }}
         </button>
@@ -239,6 +246,13 @@ watch(
 .menu a.vip-link:hover,
 .menu a.vip-link.active {
   color: #ffd98a;
+}
+.menu a.invite-link {
+  color: var(--success);
+}
+.menu a.invite-link:hover,
+.menu a.invite-link.active {
+  color: #a8e3c9;
 }
 .header-right {
   display: flex;

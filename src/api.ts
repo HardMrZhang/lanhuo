@@ -1,4 +1,4 @@
-import type { Category, Drama, DramaSummary } from './types'
+import type { Category, Drama, DramaSummary, RecommendSlot } from './types'
 
 async function get<T>(url: string): Promise<T> {
   const res = await fetch(url)
@@ -17,4 +17,13 @@ export const api = {
     return get<DramaSummary[]>(`/api/dramas${suffix}`)
   },
   drama: (id: string) => get<Drama>(`/api/dramas/${encodeURIComponent(id)}`),
+  /** 推荐位（后台配置）；失败时返回空列表，首页回落到默认排序。 */
+  recommendSlots: async () => {
+    try {
+      const payload = await get<{ slots: RecommendSlot[] }>('/api/recommend/slots')
+      return payload.slots ?? []
+    } catch {
+      return []
+    }
+  },
 }

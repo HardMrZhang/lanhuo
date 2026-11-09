@@ -2,7 +2,7 @@
 import { computed, nextTick, onActivated, ref, watch } from 'vue'
 import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
 import { api } from '../api'
-import type { Category, DramaSummary } from '../types'
+import type { Category, DramaSummary, RecommendSlot } from '../types'
 import { favorites, history } from '../storage'
 import { contentChannels, dramasForChannel, isHotDrama, uniqueById } from '../navigation'
 import { locale, tr, translateCategory, translateMessage } from '../i18n'
@@ -16,6 +16,8 @@ const route = useRoute()
 const router = useRouter()
 const categories = ref<Category[]>([])
 const dramas = ref<DramaSummary[]>([])
+/** 后台配置的推荐位；为空时首页用默认排序规则。 */
+const recommendSlots = ref<RecommendSlot[]>([])
 const loading = ref(true)
 const error = ref('')
 const keyword = ref('')
@@ -95,9 +97,28 @@ const displayList = computed(() => {
       .sort((a, b) => (history.get(b.id)?.updatedAt ?? 0) - (history.get(a.id)?.updatedAt ?? 0))
   return result
 })
+/**
+ * 按后台配置的推荐位挑选剧。
+ *
+ * 后台没配（或配置为空）时返回 null，调用方回落到默认排序逻辑。
+ */
+function dramasFromSlot(slot: RecommendSlot | undefined, pool: DramaSummary[]): DramaSummary[] | null {
+  if (!slot?.items?.length) return null
+  const byId = new Map(pool.map((drama) => [drama.id, drama]))
+  const picked: DramaSummary[] = []
+  for (const item of slot.items) {
+    const drama = byId.get(item.dramaId)
+    if (drama && !picked.some((entry) => entry.id === drama.id)) picked.push(drama)
+  }
+  return picked.length ? picked : null
+}
+
 /** 首页只上带 🔥 的热门剧（见 navigation.isHotDrama），重复的不再出现。 */
 const isHot = isHotDrama
 const featured = computed(() => {
+  // 后台推荐位优先：配置了就按配置来，没配置才用默认规则。
+  const configured = dramasFromSlot(recommendSlots.value.find((slot) => slot.key === 'home_featured'), dramas.value)
+  if (configured) return configured.slice(0, 7)
   // 轮播：新下载的欧美多集剧 + 必须是热门（带 🔥），集数多优先，其次播放量、上架时间。
   return uniqueById(
     dramas.value
@@ -113,6 +134,8 @@ const featured = computed(() => {
 /** 已在轮播出现过的剧，后面分区不再重复出现。 */
 const featuredIds = computed(() => new Set(featured.value.map((d) => d.id)))
 const ranking = computed(() => {
+  const configured = dramasFromSlot(recommendSlots.value.find((slot) => slot.key === 'home_ranking'), dramas.value)
+  if (configured) return configured.filter((d) => !featuredIds.value.has(d.id)).slice(0, 15)
   return uniqueById(
     [...dramas.value]
       .filter((d) => isHot(d) && !featuredIds.value.has(d.id))
@@ -121,6 +144,8 @@ const ranking = computed(() => {
 })
 const rankingIds = computed(() => new Set([...featuredIds.value, ...ranking.value.map((d) => d.id)]))
 const latest = computed(() => {
+  const configured = dramasFromSlot(recommendSlots.value.find((slot) => slot.key === 'home_latest'), dramas.value)
+  if (configured) return configured.filter((d) => !rankingIds.value.has(d.id)).slice(0, 15)
   return uniqueById(
     [...dramas.value]
       .filter((d) => isHot(d) && !rankingIds.value.has(d.id))
@@ -129,6 +154,8 @@ const latest = computed(() => {
 })
 const latestIds = computed(() => new Set([...rankingIds.value, ...latest.value.map((d) => d.id)]))
 const topRated = computed(() => {
+  const configured = dramasFromSlot(recommendSlots.value.find((slot) => slot.key === 'home_top_rated'), dramas.value)
+  if (configured) return configured.filter((d) => !latestIds.value.has(d.id)).slice(0, 15)
   return uniqueById(
     [...dramas.value]
       .filter((d) => isHot(d) && !latestIds.value.has(d.id))
@@ -190,17 +217,19 @@ async function load() {
   loading.value = true
   error.value = ''
   try {
-    const [list, cats] = await Promise.all([
+    const [list, cats, slots] = await Promise.all([
       api.dramas({
         category: activeCategory.value,
         q: query.value,
         sort: view.value === 'ranking' ? 'hot' : sort.value,
       }),
       categories.value.length ? Promise.resolve(categories.value) : api.categories(),
+      recommendSlots.value.length ? Promise.resolve(recommendSlots.value) : api.recommendSlots(),
     ])
     if (id === requestId) {
       dramas.value = list
       categories.value = cats
+      recommendSlots.value = slots
     }
   } catch (e) {
     if (id === requestId) error.value = e instanceof Error ? e.message : '加载失败，请稍后重试'

@@ -1,0 +1,9 @@
+/* 后台全局样式（Element Plus 之外的少量补充）。 */
+
+.admin-layout {
+  --el-color-primary: #409eff;
+}
+
+.admin-tabs .el-tabs__header {
+  margin-bottom: 12px;
+}

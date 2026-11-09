@@ -117,6 +117,7 @@ async function resendVerification() {
       </div>
       <div class="account-links">
         <router-link to="/vip">{{ tr('VIP 会员中心', 'VIP Membership') }} <span>›</span></router-link>
+        <router-link to="/invite">{{ tr('邀请好友', 'Invite friends') }} <span>›</span></router-link>
         <router-link :to="{ name: 'home', query: { view: 'favorites' } }">{{ tr('我的追剧', 'My List') }} <span>›</span></router-link>
         <router-link :to="{ name: 'home', query: { view: 'history' } }">{{ tr('观看记录', 'Watch History') }} <span>›</span></router-link>
       </div>
