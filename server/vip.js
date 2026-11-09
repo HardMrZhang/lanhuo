@@ -21,7 +21,7 @@ const PROVIDER_ORDER_TTL_MS = 15 * 60_000
 const DEFAULT_PLANS = [
   { id: 'month', name: '月度会员', days: 30, price: 10, currency: 'USDT', recommended: false },
   { id: 'halfyear', name: '半年会员', days: 180, price: 20, currency: 'USDT', recommended: true },
-  { id: 'year', name: '年度会员', days: 365, price: 20, currency: 'USDT', recommended: false },
+  { id: 'year', name: '年度会员', days: 365, price: 30, currency: 'USDT', recommended: false },
 ]
 
 function loadPlans(value) {

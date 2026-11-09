@@ -144,7 +144,7 @@ test('missing payment credentials disables checkout without creating provider pa
   const { cookie } = await f.register()
   const plans = await f.request('/vip/plans')
   assert.equal(plans.body.payment.enabled, false)
-  assert.deepEqual(plans.body.plans.map(({ price, days, currency }) => ({ price, days, currency })), [{ price: 10, days: 30, currency: 'USDT' }, { price: 20, days: 180, currency: 'USDT' }, { price: 20, days: 365, currency: 'USDT' }])
+  assert.deepEqual(plans.body.plans.map(({ price, days, currency }) => ({ price, days, currency })), [{ price: 10, days: 30, currency: 'USDT' }, { price: 20, days: 180, currency: 'USDT' }, { price: 30, days: 365, currency: 'USDT' }])
   assert.equal((await f.createOrder(cookie)).status, 503)
   assert.equal(f.providerPayments.length, 0)
 })

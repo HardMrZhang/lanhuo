@@ -293,6 +293,6 @@ src/                 Vue 前端
 | `AWS_REGION` | `ap-northeast-1` | S3 区域 |
 | `S3_PREFIX` | `hls` | S3 前缀目录 |
 | `VIP_DB_FILE` | `./data/vip.sqlite` | 会员与订单 SQLite 数据库 |
-| `VIP_PLANS_JSON` | 10 / 20 / 20 U | 自定义套餐 JSON 数组，见 `.env.example` |
+| `VIP_PLANS_JSON` | 10 / 20 / 30 U | 自定义套餐 JSON 数组，见 `.env.example` |
 
 请只上架你拥有版权或已获授权的内容。
