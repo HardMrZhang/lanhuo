@@ -18,10 +18,14 @@ interface AdminOrder {
   currency: string
   status: string
   statusLabel: string
-  provider: string
+  provider: string | null
   providerLabel: string
+  channel: 'usdt' | 'vaehub'
+  channelLabel: string
+  channelKind: 'crypto' | 'fiat'
   payAmount: number | null
   payCurrency: string | null
+  payAmountText: string | null
   payAddress: string | null
   txHash: string | null
   reviewReason: string | null
@@ -41,13 +45,28 @@ interface AdminUserRow {
   createdAt: number
   orderCount: number
   paidAmount: number
+  usdtPaidCount: number
+  vaehubPaidCount: number
+  vaehubPaidFiat: number
+}
+
+interface ChannelStat {
+  channel: 'usdt' | 'vaehub'
+  label: string
+  short: string
+  kind: 'crypto' | 'fiat'
+  count: number
+  revenue: number
+  revenueCurrency: string
+  planRevenue: number
 }
 
 interface Stats {
   totals: { orders: number; paid: number; revenue: number; review: number; pending: number; members: number }
   byStatus: { status: string; label: string; count: number }[]
-  byProvider: { provider: string; label: string; count: number; revenue: number }[]
-  daily: { day: string; orders: number; revenue: number }[]
+  byProvider: { provider: string; label: string; channel: string; count: number; revenue: number }[]
+  byChannel: ChannelStat[]
+  daily: { day: string; orders: number; revenue: number; usdtPaid: number; vaehubPaid: number }[]
 }
 
 interface ReferralStats {
@@ -67,7 +86,7 @@ const users = ref<AdminUserRow[]>([])
 const usersTotal = ref(0)
 const referral = ref<ReferralStats | null>(null)
 
-const orderQuery = reactive({ page: 1, pageSize: 20, status: '', provider: '', q: '' })
+const orderQuery = reactive({ page: 1, pageSize: 20, status: '', channel: '', provider: '', q: '' })
 const userQuery = reactive({ page: 1, pageSize: 20, q: '' })
 
 const STATUS_OPTIONS = [
@@ -82,11 +101,22 @@ const STATUS_OPTIONS = [
   { value: 'refunded', label: '已退款' },
   { value: 'review', label: '等待人工核实' },
 ]
+/**
+ * 支付方式（充值渠道大类）筛选。
+ *
+ * 「USDT 充值」= 加密货币（NOWPayments / BSC 链自建地址），计价币种 USDT；
+ * 「VaeHub 法币」= 法币收款，计价币种是当地法币（USD 等）。
+ */
+const CHANNEL_OPTIONS = [
+  { value: '', label: '全部支付方式' },
+  { value: 'usdt', label: 'USDT 充值（加密货币）' },
+  { value: 'vaehub', label: 'VaeHub（法币）' },
+]
 const PROVIDER_OPTIONS = [
   { value: '', label: '全部通道' },
   { value: 'nowpayments', label: 'NOWPayments (USDT)' },
   { value: 'vaehub', label: 'VaeHub (法币)' },
-  { value: 'bsc', label: 'BSC 链自建地址' },
+  { value: 'bsc', label: 'BSC 链自建地址 (USDT)' },
 ]
 
 const STATUS_TAG: Record<string, string> = {
@@ -103,6 +133,23 @@ const STATUS_TAG: Record<string, string> = {
 
 const maxDaily = computed(() => Math.max(1, ...(stats.value?.daily ?? []).map((item) => item.orders)))
 
+/** 取某个支付方式的统计数据（USDT / VaeHub）。 */
+function channelStat(channel: 'usdt' | 'vaehub'): ChannelStat | null {
+  return stats.value?.byChannel?.find((item) => item.channel === channel) ?? null
+}
+
+/**
+ * 订单的「实付金额」展示。
+ *
+ * USDT 通道显示链上应付金额（USDT），VaeHub 通道显示法币金额（USD 等），
+ * 两者单位不同，不能统一显示成金额 + USDT。
+ */
+function orderPayLabel(row: AdminOrder) {
+  const amount = row.payAmountText ?? (row.payAmount === null ? null : row.payAmount.toFixed(2))
+  if (amount === null) return `—`
+  return `${amount} ${row.payCurrency || row.currency}`
+}
+
 function formatDate(timestamp: number | null | undefined) {
   if (!timestamp) return '—'
   const date = new Date(timestamp)
@@ -118,6 +165,7 @@ async function loadStats() {
 async function loadOrders() {
   const params = new URLSearchParams({ page: String(orderQuery.page), pageSize: String(orderQuery.pageSize) })
   if (orderQuery.status) params.set('status', orderQuery.status)
+  if (orderQuery.channel) params.set('channel', orderQuery.channel)
   if (orderQuery.provider) params.set('provider', orderQuery.provider)
   if (orderQuery.q.trim()) params.set('q', orderQuery.q.trim())
   const result = await api.get<{ orders: AdminOrder[]; total: number }>(`/orders?${params}`)
@@ -244,17 +292,38 @@ onMounted(async () => {
             <el-col v-for="tile in stats ? [
               { label: '累计订单', value: stats.totals.orders },
               { label: '支付成功', value: stats.totals.paid },
-              { label: '收入（USDT）', value: stats.totals.revenue.toFixed(2) },
+              { label: 'USDT 充值收入', value: `${(channelStat('usdt')?.revenue ?? 0).toFixed(2)} USDT` },
+              { label: 'VaeHub 法币收入', value: `${(channelStat('vaehub')?.revenue ?? 0).toFixed(2)} ${channelStat('vaehub')?.revenueCurrency ?? 'USD'}` },
               { label: '待支付', value: stats.totals.pending },
               { label: '等待人工核实', value: stats.totals.review },
               { label: '有效会员', value: stats.totals.members },
-            ] : []" :key="tile.label" :xs="12" :sm="8" :md="4">
+            ] : []" :key="tile.label" :xs="12" :sm="8" :md="6">
               <el-card shadow="never" class="stat-card">
                 <div class="stat-value">{{ tile.value }}</div>
                 <div class="stat-label">{{ tile.label }}</div>
               </el-card>
             </el-col>
           </el-row>
+
+          <el-card shadow="never" class="section-card">
+            <template #header><strong>支付方式对比（USDT 充值 vs VaeHub 法币）</strong></template>
+            <el-table :data="stats?.byChannel ?? []" size="small" empty-text="暂无数据">
+              <el-table-column label="支付方式" width="160">
+                <template #default="{ row }">
+                  <el-tag size="small" :type="row.kind === 'crypto' ? 'warning' : 'success'">{{ row.label }}</el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column prop="count" label="订单数" width="100" />
+              <el-table-column label="收入" width="180">
+                <template #default="{ row }">
+                  {{ row.revenue.toFixed(2) }} {{ row.revenueCurrency }}
+                </template>
+              </el-table-column>
+              <el-table-column label="套餐计价（USDT）" width="160">
+                <template #default="{ row }">{{ row.planRevenue.toFixed(2) }} USDT</template>
+              </el-table-column>
+            </el-table>
+          </el-card>
 
           <el-card shadow="never" class="section-card">
             <template #header><strong>近 30 天订单量</strong></template>
@@ -264,7 +333,7 @@ onMounted(async () => {
                 :key="item.day"
                 class="bar"
                 :style="{ height: `${(item.orders / maxDaily) * 100}%` }"
-                :title="`${item.day}：${item.orders} 单 / ${item.revenue.toFixed(2)} USDT`"
+                :title="`${item.day}：${item.orders} 单（USDT ${item.usdtPaid} / VaeHub ${item.vaehubPaid}）`"
               />
             </div>
           </el-card>
@@ -274,9 +343,16 @@ onMounted(async () => {
               <el-card shadow="never" class="section-card">
                 <template #header><strong>按支付通道</strong></template>
                 <el-table :data="stats?.byProvider ?? []" size="small" empty-text="暂无数据">
-                  <el-table-column prop="label" label="通道" />
+                  <el-table-column label="通道" min-width="180">
+                    <template #default="{ row }">
+                      <el-tag size="small" :type="row.channel === 'vaehub' ? 'success' : 'warning'" style="margin-right: 6px">
+                        {{ row.channel === 'vaehub' ? 'VaeHub' : 'USDT' }}
+                      </el-tag>
+                      {{ row.label }}
+                    </template>
+                  </el-table-column>
                   <el-table-column prop="count" label="订单数" width="100" />
-                  <el-table-column label="收入（USDT）" width="140">
+                  <el-table-column label="套餐收入（USDT）" width="160">
                     <template #default="{ row }">{{ row.revenue.toFixed(2) }}</template>
                   </el-table-column>
                 </el-table>
@@ -305,7 +381,10 @@ onMounted(async () => {
               <el-select v-model="orderQuery.status" placeholder="状态" clearable style="width: 160px">
                 <el-option v-for="option in STATUS_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
               </el-select>
-              <el-select v-model="orderQuery.provider" placeholder="支付通道" clearable style="width: 180px">
+              <el-select v-model="orderQuery.channel" placeholder="支付方式" clearable style="width: 200px">
+                <el-option v-for="option in CHANNEL_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
+              </el-select>
+              <el-select v-model="orderQuery.provider" placeholder="支付通道" clearable style="width: 200px">
                 <el-option v-for="option in PROVIDER_OPTIONS" :key="option.value" :label="option.label" :value="option.value" />
               </el-select>
               <el-input
@@ -327,10 +406,24 @@ onMounted(async () => {
               <el-table-column label="套餐" min-width="160">
                 <template #default="{ row }">{{ row.planName }} · {{ row.days }} 天</template>
               </el-table-column>
-              <el-table-column label="金额" width="120">
+              <el-table-column label="支付方式" width="120">
+                <template #default="{ row }">
+                  <el-tag size="small" :type="row.channelKind === 'crypto' ? 'warning' : 'success'">
+                    {{ row.channel === 'vaehub' ? 'VaeHub' : 'USDT' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="实付金额" width="150">
+                <template #default="{ row }">
+                  <span :class="row.channel === 'vaehub' ? 'fiat' : 'crypto'">{{ orderPayLabel(row) }}</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="套餐价" width="120">
                 <template #default="{ row }">{{ row.amount.toFixed(2) }} {{ row.currency }}</template>
               </el-table-column>
-              <el-table-column prop="providerLabel" label="通道" width="150" />
+              <el-table-column label="通道" width="190">
+                <template #default="{ row }">{{ row.providerLabel }}</template>
+              </el-table-column>
               <el-table-column label="状态" width="130">
                 <template #default="{ row }">
                   <el-tag size="small" :type="(STATUS_TAG[row.status] as never) || 'info'">{{ row.statusLabel }}</el-tag>
@@ -369,10 +462,21 @@ onMounted(async () => {
             <el-table :data="reviewOrders" size="small" stripe empty-text="当前没有等待人工核实的订单" style="width: 100%">
               <el-table-column prop="id" label="订单号" min-width="200" show-overflow-tooltip />
               <el-table-column prop="email" label="用户" min-width="180" show-overflow-tooltip />
-              <el-table-column label="应付" width="140">
-                <template #default="{ row }">{{ row.payAmount ?? row.amount }} {{ row.payCurrency || row.currency }}</template>
+              <el-table-column label="应付" width="150">
+                <template #default="{ row }">
+                  <span :class="row.channel === 'vaehub' ? 'fiat' : 'crypto'">{{ orderPayLabel(row) }}</span>
+                </template>
               </el-table-column>
-              <el-table-column prop="providerLabel" label="通道" width="150" />
+              <el-table-column label="支付方式" width="120">
+                <template #default="{ row }">
+                  <el-tag size="small" :type="row.channelKind === 'crypto' ? 'warning' : 'success'">
+                    {{ row.channel === 'vaehub' ? 'VaeHub' : 'USDT' }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="通道" width="190">
+                <template #default="{ row }">{{ row.providerLabel }}</template>
+              </el-table-column>
               <el-table-column prop="reviewReason" label="原因" min-width="180" show-overflow-tooltip />
               <el-table-column label="创建时间" width="160">
                 <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
@@ -416,7 +520,16 @@ onMounted(async () => {
                 <template #default="{ row }">{{ row.emailVerified ? '已验证' : '未验证' }}</template>
               </el-table-column>
               <el-table-column prop="orderCount" label="订单数" width="90" />
-              <el-table-column label="累计支付" width="130">
+              <el-table-column label="USDT 充值" width="120">
+                <template #default="{ row }">{{ row.usdtPaidCount }} 单</template>
+              </el-table-column>
+              <el-table-column label="VaeHub 法币" width="140">
+                <template #default="{ row }">
+                  {{ row.vaehubPaidCount }} 单
+                  <span v-if="row.vaehubPaidCount" class="fiat">（{{ row.vaehubPaidFiat.toFixed(2) }}）</span>
+                </template>
+              </el-table-column>
+              <el-table-column label="套餐累计" width="130">
                 <template #default="{ row }">{{ row.paidAmount.toFixed(2) }} USDT</template>
               </el-table-column>
               <el-table-column label="操作" width="120" fixed="right">
@@ -515,6 +628,16 @@ onMounted(async () => {
 .mono {
   font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
   font-size: 12px;
+}
+/* USDT（加密货币）金额 */
+.crypto {
+  color: #e6a23c;
+  font-weight: 600;
+}
+/* VaeHub 法币金额 */
+.fiat {
+  color: #67c23a;
+  font-weight: 600;
 }
 .bar-chart {
   display: flex;

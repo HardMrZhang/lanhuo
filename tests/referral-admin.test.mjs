@@ -336,6 +336,84 @@ test('the payment admin can confirm a reviewed order and grant membership', asyn
   })
 })
 
+test('the payment admin separates USDT crypto orders from VaeHub fiat orders', async () => {
+  await withDatabase(async (pool) => {
+    const { referral } = await fixture(pool)
+    const user = await createUser(pool, 'mixed@example.test')
+    const now = Date.now()
+    // 一笔 NOWPayments 的 USDT 充值（加密货币）。
+    await pool.execute(
+      `INSERT INTO vip_orders (id, user_id, idempotency_key, plan_id, plan_name, days, amount_cents, status, created_at, paid_at, provider, pay_amount, pay_currency)
+       VALUES (?, ?, ?, 'month', '月度会员', 30, 1000, 'paid', ?, ?, 'nowpayments', 10, 'usdttrc20')`,
+      [randomUUID(), user.id, randomUUID(), now, now],
+    )
+    // 一笔 VaeHub 的法币收款（10 USD 套餐 → 汇率后 10.5 USD）。
+    await pool.execute(
+      `INSERT INTO vip_orders (id, user_id, idempotency_key, plan_id, plan_name, days, amount_cents, status, created_at, paid_at, provider, pay_amount, pay_currency)
+       VALUES (?, ?, ?, 'month', '月度会员', 30, 1000, 'paid', ?, ?, 'vaehub', 10.50, 'USD')`,
+      [randomUUID(), user.id, randomUUID(), now, now],
+    )
+
+    const auth = createAdminAuth({ pool, allowedRoles: ['payment', 'super'], cookieName: 'duanju_admin_payment' })
+    await createAdminUser(pool, { username: 'pay', password: 'Correct-Horse-972!', role: 'payment' })
+    const app = express()
+    app.use(express.json())
+    app.use('/admin-api/payment', auth)
+    app.use('/admin-api/payment', auth.__requireAdmin, createPaymentAdminRouter({ pool, referral }))
+    const server = app.listen(0, '127.0.0.1')
+    await new Promise((resolve) => server.once('listening', resolve))
+    const base = `http://127.0.0.1:${server.address().port}/admin-api/payment`
+    try {
+      const login = await fetch(`${base}/login`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: 'pay', password: 'Correct-Horse-972!' }),
+      })
+      const cookie = login.headers.get('set-cookie').split(';')[0]
+
+      // 订单列表必须带上通道分类与币种。
+      const all = await (await fetch(`${base}/orders`, { headers: { Cookie: cookie } })).json()
+      assert.equal(all.total, 2)
+      const usdt = all.orders.find((row) => row.provider === 'nowpayments')
+      const fiat = all.orders.find((row) => row.provider === 'vaehub')
+      assert.equal(usdt.channel, 'usdt')
+      assert.equal(usdt.channelKind, 'crypto')
+      assert.equal(usdt.payCurrency, 'USDT')
+      assert.equal(fiat.channel, 'vaehub')
+      assert.equal(fiat.channelKind, 'fiat')
+      assert.equal(fiat.payCurrency, 'USD')
+
+      // 按支付方式筛选：USDT 只剩加密货币那笔，VaeHub 只剩法币那笔。
+      const onlyUsdt = await (await fetch(`${base}/orders?channel=usdt`, { headers: { Cookie: cookie } })).json()
+      assert.equal(onlyUsdt.total, 1)
+      assert.equal(onlyUsdt.orders[0].provider, 'nowpayments')
+      const onlyFiat = await (await fetch(`${base}/orders?channel=vaehub`, { headers: { Cookie: cookie } })).json()
+      assert.equal(onlyFiat.total, 1)
+      assert.equal(onlyFiat.orders[0].provider, 'vaehub')
+
+      // 统计必须按通道分开：收入单位不同，不能混成一个数字。
+      const stats = await (await fetch(`${base}/stats`, { headers: { Cookie: cookie } })).json()
+      const usdtStat = stats.byChannel.find((row) => row.channel === 'usdt')
+      const fiatStat = stats.byChannel.find((row) => row.channel === 'vaehub')
+      assert.equal(usdtStat.revenueCurrency, 'USDT')
+      assert.equal(usdtStat.revenue, 10)
+      assert.equal(fiatStat.revenueCurrency, 'USD')
+      assert.equal(fiatStat.revenue, 10.5)
+      // 套餐计价（统一 USDT）两笔都是 10。
+      assert.equal(usdtStat.planRevenue, 10)
+      assert.equal(fiatStat.planRevenue, 10)
+
+      // 会员列表也要分通道累计。
+      const users = await (await fetch(`${base}/users`, { headers: { Cookie: cookie } })).json()
+      const row = users.users.find((item) => item.email === 'mixed@example.test')
+      assert.equal(row.usdtPaidCount, 1)
+      assert.equal(row.vaehubPaidCount, 1)
+      assert.equal(row.vaehubPaidFiat, 10.5)
+    } finally {
+      await new Promise((resolve) => server.close(resolve))
+    }
+  })
+})
+
 test('the recommend admin creates slots and items', async () => {
   await withDatabase(async (pool) => {
     await fixture(pool)

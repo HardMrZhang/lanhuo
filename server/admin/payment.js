@@ -40,36 +40,78 @@ export function createPaymentAdminRouter({ pool, referralService, logger = conso
   const PROVIDER_LABELS = {
     nowpayments: 'NOWPayments (USDT)',
     vaehub: 'VaeHub (法币)',
-    bsc: 'BSC 链自建地址',
-    base: 'BSC 链自建地址',
+    bsc: 'BSC 链自建地址 (USDT)',
+    base: 'BSC 链自建地址 (USDT)',
   }
 
-  const orderRow = (row) => ({
-    id: row.id,
-    userId: row.user_id,
-    email: row.email ?? null,
-    planId: row.plan_id,
-    planName: row.plan_name,
-    days: Number(row.days),
-    amount: Number(row.amount_cents) / 100,
-    currency: 'USDT',
-    status: row.status,
-    statusLabel: STATUS_LABELS[row.status] ?? row.status,
-    provider: row.provider,
-    providerLabel: PROVIDER_LABELS[row.provider] ?? row.provider ?? '-',
-    payAmount: row.pay_amount === null || row.pay_amount === undefined ? null : Number(row.pay_amount),
-    payCurrency: row.pay_currency ?? null,
-    payAddress: row.pay_address ?? null,
-    txHash: row.tx_hash ?? null,
-    reviewReason: row.review_reason ?? null,
-    checkoutUrl: row.checkout_url ?? null,
-    invoiceId: row.invoice_id ?? null,
-    paymentId: row.payment_id ?? null,
-    createdAt: Number(row.created_at),
-    paidAt: row.paid_at === null || row.paid_at === undefined ? null : Number(row.paid_at),
-    refundedAt: row.refunded_at === null || row.refunded_at === undefined ? null : Number(row.refunded_at),
-    expiresAt: row.payment_expires_at ?? null,
-  })
+  /**
+   * 支付方式分类（后台最关心的维度）。
+   *
+   * 用户问的「是 USDT 充值的还是 VaeHub」对应两类：
+   *   - usdt：加密货币充值（NOWPayments / BSC 链自建地址），计价币种是 USDT；
+   *   - vaehub：VaeHub 法币收款（收银台 / 二维码），计价币种是当地法币（USD 等）。
+   *
+   * 两者金额单位不同，美元与 USDT 不能相加，因此统计按 channel 分开累加，
+   * 订单上额外给出 channel / channelLabel / channelKind 供前端打标签。
+   */
+  const CHANNELS = {
+    usdt: { label: 'USDT 充值', short: 'USDT', kind: 'crypto' },
+    vaehub: { label: 'VaeHub 法币', short: 'VaeHub', kind: 'fiat' },
+  }
+  const providerChannel = (provider) => (provider === 'vaehub' ? 'vaehub' : 'usdt')
+
+  /** 通道原始 pay_currency → 人类可读币种（nowpayments 用的是 usdttrc20 这类小写网络标识）。 */
+  const currencyLabel = (value) => {
+    if (!value) return null
+    const text = String(value).trim()
+    if (!text) return null
+    if (/^usdt/i.test(text)) return 'USDT'
+    if (/^usd/i.test(text)) return 'USD'
+    if (/^sgd/i.test(text)) return 'SGD'
+    if (/^myr/i.test(text)) return 'MYR'
+    if (/^php/i.test(text)) return 'PHP'
+    if (/^idr/i.test(text)) return 'IDR'
+    if (/^thb/i.test(text)) return 'THB'
+    if (/^vnd/i.test(text)) return 'VND'
+    return text.toUpperCase()
+  }
+
+  const orderRow = (row) => {
+    const provider = row.provider ?? null
+    const channel = providerChannel(provider)
+    return {
+      id: row.id,
+      userId: row.user_id,
+      email: row.email ?? null,
+      planId: row.plan_id,
+      planName: row.plan_name,
+      days: Number(row.days),
+      amount: Number(row.amount_cents) / 100,
+      currency: 'USDT',
+      status: row.status,
+      statusLabel: STATUS_LABELS[row.status] ?? row.status,
+      provider,
+      providerLabel: PROVIDER_LABELS[provider] ?? provider ?? '-',
+      // 通道分类：usdt（加密货币）/ vaehub（法币）。
+      channel,
+      channelLabel: CHANNELS[channel].label,
+      channelKind: CHANNELS[channel].kind,
+      payAmount: row.pay_amount === null || row.pay_amount === undefined ? null : Number(row.pay_amount),
+      payCurrency: currencyLabel(row.pay_currency),
+      // 链上通道的应付金额精确文本（尾数是订单标识，不能被 number 抹掉）。
+      payAmountText: row.pay_amount_text ?? null,
+      payAddress: row.pay_address ?? null,
+      txHash: row.tx_hash ?? null,
+      reviewReason: row.review_reason ?? null,
+      checkoutUrl: row.checkout_url ?? null,
+      invoiceId: row.invoice_id ?? null,
+      paymentId: row.payment_id ?? null,
+      createdAt: Number(row.created_at),
+      paidAt: row.paid_at === null || row.paid_at === undefined ? null : Number(row.paid_at),
+      refundedAt: row.refunded_at === null || row.refunded_at === undefined ? null : Number(row.refunded_at),
+      expiresAt: row.payment_expires_at ?? null,
+    }
+  }
 
   /** 订单列表：支持状态、通道、关键词与分页筛选。 */
   router.get('/orders', asyncRoute(async (req, res) => {
@@ -77,11 +119,15 @@ export function createPaymentAdminRouter({ pool, referralService, logger = conso
     const pageSize = Math.min(100, Math.max(1, Number(req.query.pageSize) || 20))
     const status = typeof req.query.status === 'string' && STATUS_LABELS[req.query.status] ? req.query.status : null
     const provider = typeof req.query.provider === 'string' && PROVIDER_LABELS[req.query.provider] ? req.query.provider : null
+    // 通道筛选：USDT（加密货币）还是 VaeHub（法币）。
+    const channel = typeof req.query.channel === 'string' && CHANNELS[req.query.channel] ? req.query.channel : null
     const keyword = typeof req.query.q === 'string' ? req.query.q.trim() : ''
     const where = []
     const args = []
     if (status) { where.push('o.status = ?'); args.push(status) }
     if (provider) { where.push('o.provider = ?'); args.push(provider) }
+    if (channel === 'vaehub') { where.push("o.provider = 'vaehub'") }
+    else if (channel === 'usdt') { where.push("(o.provider IS NULL OR o.provider <> 'vaehub')") }
     if (keyword) {
       where.push('(o.id = ? OR u.email LIKE ? OR o.invoice_id = ? OR o.payment_id = ? OR o.tx_hash = ?)')
       args.push(keyword, `%${keyword}%`, keyword, keyword, keyword)
@@ -126,9 +172,22 @@ export function createPaymentAdminRouter({ pool, referralService, logger = conso
     const membersRow = await query('SELECT COUNT(*) AS total FROM vip_users WHERE vip_expires_at > ?', Date.now())
     const statusRows = await queryAll('SELECT status, COUNT(*) AS total FROM vip_orders GROUP BY status')
     const providerRows = await queryAll('SELECT provider, COUNT(*) AS total, COALESCE(SUM(CASE WHEN status = \'paid\' THEN amount_cents ELSE 0 END), 0) AS revenue FROM vip_orders GROUP BY provider')
+    // 按通道（USDT 加密货币 / VaeHub 法币）分组统计。
+    // 法币通道的收入取 pay_amount（真实收到的法币金额），USDT 通道取 amount_cents。
+    const channelRows = await queryAll(
+      `SELECT IF(provider = 'vaehub', 'vaehub', 'usdt') AS channel,
+              COUNT(*) AS total,
+              COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_cents ELSE 0 END), 0) AS revenue,
+              COALESCE(SUM(CASE WHEN status = 'paid' AND provider = 'vaehub' THEN pay_amount ELSE 0 END), 0) AS fiat_revenue,
+              MAX(pay_currency) AS pay_currency
+        FROM vip_orders GROUP BY channel`,
+    )
     const dailyRows = await queryAll(
       `SELECT DATE(FROM_UNIXTIME(created_at / 1000)) AS day, COUNT(*) AS total,
-              COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_cents ELSE 0 END), 0) AS revenue
+              COALESCE(SUM(CASE WHEN status = 'paid' THEN amount_cents ELSE 0 END), 0) AS revenue,
+              COALESCE(SUM(CASE WHEN status = 'paid' AND provider = 'vaehub' THEN pay_amount ELSE 0 END), 0) AS fiat_revenue,
+              COALESCE(SUM(CASE WHEN status = 'paid' AND provider <> 'vaehub' THEN 1 ELSE 0 END), 0) AS usdt_paid,
+              COALESCE(SUM(CASE WHEN status = 'paid' AND provider = 'vaehub' THEN 1 ELSE 0 END), 0) AS vaehub_paid
         FROM vip_orders WHERE created_at >= ? GROUP BY day ORDER BY day`,
       Date.now() - 30 * 86400_000,
     )
@@ -137,8 +196,32 @@ export function createPaymentAdminRouter({ pool, referralService, logger = conso
       const date = new Date(Date.now() - i * 86400_000)
       const key = date.toISOString().slice(0, 10)
       const found = dailyRows.find((row) => String(row.day) === key)
-      days.push({ day: key, orders: Number(found?.total ?? 0), revenue: Number(found?.revenue ?? 0) / 100 })
+      days.push({
+        day: key,
+        orders: Number(found?.total ?? 0),
+        revenue: Number(found?.revenue ?? 0) / 100,
+        usdtPaid: Number(found?.usdt_paid ?? 0),
+        vaehubPaid: Number(found?.vaehub_paid ?? 0),
+      })
     }
+    // 通道维度的小结：USDT 通道收入单位是 USDT，VaeHub 通道收入单位是法币，两者分开展示。
+    const byChannel = Object.keys(CHANNELS).map((key) => {
+      const row = channelRows.find((item) => item.channel === key)
+      const meta = CHANNELS[key]
+      const isFiat = key === 'vaehub'
+      return {
+        channel: key,
+        label: meta.label,
+        short: meta.short,
+        kind: meta.kind,
+        count: Number(row?.total ?? 0),
+        // USDT 通道：套餐计价（USDT）；VaeHub 通道：实际收取的法币金额。
+        revenue: isFiat ? Number(row?.fiat_revenue ?? 0) : Number(row?.revenue ?? 0) / 100,
+        revenueCurrency: isFiat ? (currencyLabel(row?.pay_currency) ?? 'USD') : 'USDT',
+        // 套餐计价总和（统一 USDT），方便横向对比「卖出去多少额度」。
+        planRevenue: Number(row?.revenue ?? 0) / 100,
+      }
+    })
     return res.json({
       totals: {
         orders: Number(totalRow?.total ?? 0),
@@ -152,9 +235,11 @@ export function createPaymentAdminRouter({ pool, referralService, logger = conso
       byProvider: providerRows.map((row) => ({
         provider: row.provider ?? '-',
         label: PROVIDER_LABELS[row.provider] ?? row.provider ?? '-',
+        channel: providerChannel(row.provider),
         count: Number(row.total),
         revenue: Number(row.revenue) / 100,
       })),
+      byChannel,
       daily: days,
     })
   }))
@@ -218,7 +303,10 @@ export function createPaymentAdminRouter({ pool, referralService, logger = conso
     const rows = await queryAll(
       `SELECT u.id, u.email, u.vip_expires_at, u.email_verified, u.created_at,
               (SELECT COUNT(*) FROM vip_orders o WHERE o.user_id = u.id) AS order_count,
-              (SELECT COALESCE(SUM(amount_cents),0) FROM vip_orders o WHERE o.user_id = u.id AND o.status = 'paid') AS paid_cents
+              (SELECT COALESCE(SUM(amount_cents),0) FROM vip_orders o WHERE o.user_id = u.id AND o.status = 'paid') AS paid_cents,
+              (SELECT COALESCE(SUM(o.pay_amount),0) FROM vip_orders o WHERE o.user_id = u.id AND o.status = 'paid' AND o.provider = 'vaehub') AS vaehub_fiat,
+              (SELECT COUNT(*) FROM vip_orders o WHERE o.user_id = u.id AND o.status = 'paid' AND o.provider = 'vaehub') AS vaehub_count,
+              (SELECT COUNT(*) FROM vip_orders o WHERE o.user_id = u.id AND o.status = 'paid' AND (o.provider IS NULL OR o.provider <> 'vaehub')) AS usdt_count
         FROM vip_users u ${clause} ORDER BY u.created_at DESC LIMIT ? OFFSET ?`,
       ...args, pageSize, (page - 1) * pageSize,
     )
@@ -232,6 +320,10 @@ export function createPaymentAdminRouter({ pool, referralService, logger = conso
         createdAt: Number(row.created_at),
         orderCount: Number(row.order_count),
         paidAmount: Number(row.paid_cents) / 100,
+        // 分通道累计：USDT（加密货币）与 VaeHub（法币）分开统计。
+        usdtPaidCount: Number(row.usdt_count),
+        vaehubPaidCount: Number(row.vaehub_count),
+        vaehubPaidFiat: Number(row.vaehub_fiat ?? 0),
       })),
       total: Number(totalRow?.total ?? 0),
       page,
@@ -300,5 +392,6 @@ export function createPaymentAdminRouter({ pool, referralService, logger = conso
 
   router.__statusLabels = STATUS_LABELS
   router.__providerLabels = PROVIDER_LABELS
+  router.__channelLabels = CHANNELS
   return router
 }
