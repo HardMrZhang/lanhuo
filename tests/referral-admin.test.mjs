@@ -513,6 +513,11 @@ test('同源校验：认 X-Forwarded-Host，反代下的同源请求不应被误
     host: 'localhost:3001',
     'x-forwarded-host': 'admin.example.com',
   }).status, 200)
+  // 反代且没有 X-Forwarded-Host：Host 与 Origin 都不一致 → 拒绝。
+  assert.equal(call({
+    origin: 'https://admin.example.com',
+    host: '127.0.0.1:3001',
+  }).status, 403)
   // 真跨站 → 拒绝。
   assert.equal(call({ origin: 'https://evil.example.com', host: 'admin.example.com' }).status, 403)
   // GET 不做校验。
@@ -520,4 +525,25 @@ test('同源校验：认 X-Forwarded-Host，反代下的同源请求不应被误
   let passed = false
   requireSameOrigin(getReq, { status: () => ({ json: () => ({}) }) }, () => { passed = true })
   assert.equal(passed, true)
+})
+
+test('同源校验：APP_URL 兜底 —— 反代改写 Host 且无 X-Forwarded-Host 时仍认得自己的站点', () => {
+  const previous = process.env.APP_URL
+  process.env.APP_URL = 'https://lanhuo.peaktvb.org'
+  try {
+    const call = (headers) => {
+      const req = { method: 'POST', get: (name) => headers[name.toLowerCase()] }
+      let status = 200
+      const res = { status: (code) => { status = code; return res }, json: () => res }
+      requireSameOrigin(req, res, () => {})
+      return status
+    }
+    // 反代把 Host 改写成上游、没有 X-Forwarded-Host，但 Origin 是站点自身 → 放行。
+    assert.equal(call({ origin: 'https://lanhuo.peaktvb.org', host: '127.0.0.1:3001' }), 200)
+    // 别的站点仍然拒绝。
+    assert.equal(call({ origin: 'https://evil.example.com', host: '127.0.0.1:3001' }), 403)
+  } finally {
+    if (previous === undefined) delete process.env.APP_URL
+    else process.env.APP_URL = previous
+  }
 })

@@ -255,20 +255,38 @@ export function createAdminAuth({ pool, allowedRoles, cookieName = ADMIN_COOKIE,
 /**
  * 跨站请求防护：后台接口只接受同源表单提交。
  * 后台是内部工具，不接受第三方站点发起的写操作。
+ *
+ * 同源判断要认全所有「真实站点域名」的来源，否则反代下会误杀自己的请求：
+ *   - Host              —— 直连时浏览器带的就是站点域名；
+ *   - X-Forwarded-Host  —— Nginx / 云网关改写 Host 头后，真实域名放在这里；
+ *   - APP_URL           —— 站点自身的配置地址，作为最终兜底。
+ *
+ * 少认一个都会表现为「同源却被判跨站」的 403，且越是在反代后越难排查。
  */
 export function requireSameOrigin(req, res, next) {
   if (['GET', 'HEAD', 'OPTIONS'].includes(req.method)) return next()
   const origin = req.get('Origin')
   if (!origin) return next()
-  // 反向代理（Nginx / Vite dev proxy）会把真实域名放在 X-Forwarded-Host，
-  // 而 Host 头可能已经被改写成上游地址。两边都认，才不会把同源请求误判成跨站。
-  const host = req.get('x-forwarded-host') || req.get('host')
-  if (!host) return res.status(403).json({ error: '不允许跨站请求' })
+  let originHost = null
   try {
-    const own = new URL(origin)
-    if (own.host !== host) return res.status(403).json({ error: '不允许跨站请求' })
+    originHost = new URL(origin).host
   } catch {
     return res.status(403).json({ error: '不允许跨站请求' })
   }
+  if (!originHost) return res.status(403).json({ error: '不允许跨站请求' })
+
+  const allowed = new Set()
+  const forwardedHost = req.get('x-forwarded-host')
+  if (forwardedHost) allowed.add(forwardedHost.split(',')[0].trim())
+  const host = req.get('host')
+  if (host) allowed.add(host.trim())
+  // 站点自身的规范地址：反代把 Host 改得面目全非时，仍然认得自己。
+  const appUrl = typeof process.env.APP_URL === 'string' ? process.env.APP_URL.trim() : ''
+  if (appUrl) {
+    try {
+      allowed.add(new URL(appUrl).host)
+    } catch { /* 配置不是合法 URL 时忽略 */ }
+  }
+  if (!allowed.has(originHost)) return res.status(403).json({ error: '不允许跨站请求' })
   next()
 }
