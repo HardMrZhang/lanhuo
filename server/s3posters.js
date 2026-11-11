@@ -19,7 +19,7 @@ const s3 = new S3Client({
     : {}),
 })
 
-const FILE_RE = /^local-[a-f0-9]{16}\.(jpg|jpeg|png|webp)$/
+const FILE_RE = /^(local-[a-f0-9]{16}|xv-[a-z0-9]{8,})\.(jpg|jpeg|png|webp)$/
 
 export function posterKeyOf(params) {
   const file = params?.file ?? ''

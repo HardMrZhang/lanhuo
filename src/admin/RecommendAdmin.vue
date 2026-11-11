@@ -42,6 +42,52 @@ const currentSlot = ref<Slot | null>(null)
 const items = ref<Item[]>([])
 const dramas = ref<DramaOption[]>([])
 
+/** 推广码消费统计：按邀请码看下级人数与下级付费金额。 */
+interface ReferralCodeStat {
+  userId: string
+  code: string
+  email: string
+  inviteeCount: number
+  paidOrderCount: number
+  usdtAmount: number
+  fiatAmount: number
+  lastPaidAt: number | null
+}
+interface ReferralDetail {
+  id: string
+  code: string
+  source: string
+  boundAt: number
+  inviter: string
+  invitee: string
+  inviteeUserId: string
+  vipActive: boolean
+  paidOrderCount: number
+  usdtAmount: number
+  fiatAmount: number
+  lastPaidAt: number | null
+}
+interface ReferralStats {
+  totals: { codes: number; invitees: number; paidOrderCount: number; usdtAmount: number; fiatAmount: number }
+  codes: ReferralCodeStat[]
+  details: ReferralDetail[]
+}
+const referral = ref<ReferralStats | null>(null)
+const referralKeyword = ref('')
+
+/** 明细按邀请码 / 用户 / 来源过滤。 */
+const filteredReferralDetails = computed(() => {
+  const list = referral.value?.details ?? []
+  const kw = referralKeyword.value.trim().toLowerCase()
+  if (!kw) return list
+  return list.filter(
+    (row) =>
+      row.code.toLowerCase().includes(kw) ||
+      row.inviter.toLowerCase().includes(kw) ||
+      row.invitee.toLowerCase().includes(kw),
+  )
+})
+
 const newSlot = reactive({ key: '', name: '', description: '', weight: 0, itemLimit: 10 })
 const addDramaId = ref('')
 
@@ -70,6 +116,10 @@ async function loadOverview() {
   overview.value = result.overview
 }
 
+async function loadReferral() {
+  referral.value = await api.get<ReferralStats>('/referral-stats')
+}
+
 async function loadItems() {
   if (!currentSlot.value) {
     items.value = []
@@ -92,7 +142,7 @@ async function loadDramas() {
 }
 
 async function loadAll() {
-  await Promise.all([loadSlots(), loadOverview(), loadItems()])
+  await Promise.all([loadSlots(), loadOverview(), loadItems(), loadReferral()])
 }
 
 /** 登录成功后拉取数据。 */
@@ -211,6 +261,86 @@ onMounted(async () => {
 
     <!-- 已登录：显示业务数据 -->
     <template v-else>
+      <el-alert
+        type="info"
+        :closable="false"
+        title="推广码消费统计：按邀请码汇总其下级（被邀请人）的付费金额。USDT 与法币金额币种不同，分开统计不相加；退款订单不计入。"
+        style="margin-bottom: 16px"
+      />
+
+      <!-- 推广码消费总览 -->
+      <el-row v-if="referral" :gutter="16" style="margin-bottom: 16px">
+        <el-col v-for="tile in [
+          { label: '推广码数量', value: referral.totals.codes },
+          { label: '下级总人数', value: referral.totals.invitees },
+          { label: '下级已支付订单', value: referral.totals.paidOrderCount },
+          { label: '下级消费 (USDT)', value: referral.totals.usdtAmount.toFixed(2) },
+          { label: '下级消费 (法币)', value: referral.totals.fiatAmount.toFixed(2) },
+        ]" :key="tile.label" :xs="12" :sm="8" :md="4">
+          <el-card shadow="never" class="stat-card">
+            <div class="stat-value">{{ tile.value }}</div>
+            <div class="stat-label">{{ tile.label }}</div>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <!-- 推广码维度汇总 -->
+      <el-card shadow="never" class="section-card">
+        <template #header><strong>推广码消费汇总</strong></template>
+        <el-table :data="referral?.codes ?? []" size="small" empty-text="暂无推广码数据">
+          <el-table-column prop="code" label="推广码" width="140" />
+          <el-table-column prop="email" label="推广人" min-width="180" />
+          <el-table-column prop="inviteeCount" label="下级人数" width="100" />
+          <el-table-column prop="paidOrderCount" label="下级已支付订单" width="130" />
+          <el-table-column label="下级消费 (USDT)" width="140">
+            <template #default="{ row }">{{ Number(row.usdtAmount).toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column label="下级消费 (法币)" width="140">
+            <template #default="{ row }">{{ Number(row.fiatAmount).toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column label="最近消费" width="170">
+            <template #default="{ row }">{{ row.lastPaidAt ? formatDate(row.lastPaidAt) : '—' }}</template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+
+      <!-- 下级消费明细 -->
+      <el-card shadow="never" class="section-card">
+        <template #header>
+          <strong>下级消费明细</strong>
+        </template>
+        <el-input
+          v-model="referralKeyword"
+          placeholder="按推广码 / 推广人 / 下级搜索"
+          clearable
+          style="width: 260px; margin-bottom: 12px"
+        />
+        <el-table :data="filteredReferralDetails" size="small" empty-text="暂无下级消费记录" style="width: 100%">
+          <el-table-column prop="code" label="推广码" width="120" />
+          <el-table-column prop="inviter" label="推广人" min-width="160" />
+          <el-table-column prop="invitee" label="下级" min-width="160" />
+          <el-table-column label="会员状态" width="100">
+            <template #default="{ row }">
+              <el-tag size="small" :type="row.vipActive ? 'success' : 'info'">{{ row.vipActive ? '有效' : '过期' }}</el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="paidOrderCount" label="已支付订单" width="110" />
+          <el-table-column label="消费 (USDT)" width="130">
+            <template #default="{ row }">{{ Number(row.usdtAmount).toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column label="消费 (法币)" width="130">
+            <template #default="{ row }">{{ Number(row.fiatAmount).toFixed(2) }}</template>
+          </el-table-column>
+          <el-table-column prop="source" label="来源" width="90" />
+          <el-table-column label="绑定时间" width="170">
+            <template #default="{ row }">{{ formatDate(row.boundAt) }}</template>
+          </el-table-column>
+          <el-table-column label="最近消费" width="170">
+            <template #default="{ row }">{{ row.lastPaidAt ? formatDate(row.lastPaidAt) : '—' }}</template>
+          </el-table-column>
+        </el-table>
+      </el-card>
+
       <el-card shadow="never" class="section-card">
         <template #header><strong>推荐位概览</strong></template>
         <el-table :data="overview" size="small" empty-text="还没有推荐位">
@@ -371,6 +501,18 @@ onMounted(async () => {
 <style scoped>
 .section-card {
   margin-bottom: 16px;
+}
+.stat-card {
+  text-align: center;
+}
+.stat-value {
+  font-size: 22px;
+  font-weight: 600;
+}
+.stat-label {
+  margin-top: 4px;
+  color: #909399;
+  font-size: 12px;
 }
 .hint {
   margin-top: 12px;

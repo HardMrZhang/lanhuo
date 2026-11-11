@@ -4,7 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 export const DATA_FILE = process.env.DATA_FILE || path.resolve(__dirname, '../data/dramas.json')
-const importChannels = new Set(['shorts', 'anime', 'western'])
+const importChannels = new Set(['shorts', 'anime', 'western', 'videos'])
 
 /**
  * 读取并校验 data/dramas.json。

@@ -26,7 +26,7 @@ const isProd = process.env.NODE_ENV === 'production'
 // 封面 URL 版本号：封面路径曾返回过 404 HTML，而响应头带 immutable 会被浏览器长期缓存，
 // 加版本参数让 URL 变化，强制浏览器与 CDN 重新拉取真实图片。
 const POSTER_VERSION = process.env.POSTER_VERSION || 'v2'
-const POSTER_PATH_RE = /^\/posters\/imported\/local-[a-f0-9]{16}\.jpg$/
+const POSTER_PATH_RE = /^\/posters\/imported\/(local-[a-f0-9]{16}|xv-[a-z0-9]{8,})\.jpg$/
 
 /** 给本地封面路径追加版本参数（已带参数的保持不变）。 */
 function versionedCover(cover) {

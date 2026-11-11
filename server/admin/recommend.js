@@ -1,4 +1,5 @@
 import express from 'express'
+import { maskEmail } from '../referral.js'
 
 /**
  * 推荐系统后台 API。
@@ -248,6 +249,104 @@ export function createRecommendAdminRouter({ pool, logger = console }) {
         itemLimit: Number(row.item_limit),
         totalItems: Number(row.total_items),
         enabledItems: Number(row.enabled_items),
+      })),
+    })
+  }))
+
+  /**
+   * 推广码（邀请码）消费统计。
+   *
+   * 按邀请人聚合其下级（被邀请人）的付费情况：
+   *   - 下级人数 = 通过该邀请码绑定的用户数；
+   *   - 下级消费 = 这些下级已支付订单的金额合计。
+   *
+   * 金额分通道统计：USDT 通道（加密货币）取套餐计价 amount_cents，
+   * VaeHub 通道（法币）取实收 pay_amount，两者币种不同不能相加。
+   * 退款订单不计入消费。
+   */
+  router.get('/referral-stats', asyncRoute(async (_req, res) => {
+    // 汇总：每个邀请人名下下级的付费情况。
+    // 订单先按被邀请人聚合再 JOIN，避免一个下级有多笔已支付订单时金额被重复累加。
+    const summaryRows = await queryAll(
+      `SELECT r.inviter_user_id,
+              COUNT(DISTINCT r.invitee_user_id) AS invitee_count,
+              COALESCE(SUM(o.paid_order_count), 0) AS paid_order_count,
+              COALESCE(SUM(o.usdt_cents), 0) AS usdt_cents,
+              COALESCE(SUM(o.fiat_amount), 0) AS fiat_amount,
+              MAX(o.last_paid_at) AS last_paid_at
+        FROM referral_relations r
+        LEFT JOIN (
+          SELECT user_id,
+                 COUNT(*) AS paid_order_count,
+                 COALESCE(SUM(CASE WHEN provider = 'vaehub' THEN 0 ELSE amount_cents END), 0) AS usdt_cents,
+                 COALESCE(SUM(CASE WHEN provider = 'vaehub' THEN pay_amount ELSE 0 END), 0) AS fiat_amount,
+                 MAX(paid_at) AS last_paid_at
+          FROM vip_orders WHERE status = 'paid' GROUP BY user_id
+        ) o ON o.user_id = r.invitee_user_id
+        GROUP BY r.inviter_user_id`,
+    )
+    const codeRows = await queryAll(
+      `SELECT rc.user_id, rc.code, u.email FROM referral_codes rc
+        LEFT JOIN vip_users u ON u.id = rc.user_id`,
+    )
+    const codeByUser = new Map(codeRows.map((row) => [row.user_id, row]))
+    // 汇总每个邀请码下的下级消费明细。
+    const detailRows = await queryAll(
+      `SELECT r.id, r.code, r.source, r.bound_at,
+              iu.email AS inviter_email, eu.email AS invitee_email,
+              eu.id AS invitee_user_id,
+              eu.vip_expires_at,
+              (SELECT COUNT(*) FROM vip_orders o WHERE o.user_id = eu.id AND o.status = 'paid') AS paid_order_count,
+              (SELECT COALESCE(SUM(o.amount_cents),0) FROM vip_orders o WHERE o.user_id = eu.id AND o.status = 'paid' AND (o.provider IS NULL OR o.provider <> 'vaehub')) AS usdt_cents,
+              (SELECT COALESCE(SUM(o.pay_amount),0) FROM vip_orders o WHERE o.user_id = eu.id AND o.status = 'paid' AND o.provider = 'vaehub') AS fiat_amount,
+              (SELECT MAX(o.paid_at) FROM vip_orders o WHERE o.user_id = eu.id AND o.status = 'paid') AS last_paid_at
+        FROM referral_relations r
+        LEFT JOIN vip_users iu ON iu.id = r.inviter_user_id
+        LEFT JOIN vip_users eu ON eu.id = r.invitee_user_id
+        ORDER BY r.bound_at DESC`,
+    )
+    const summaryByUser = new Map(summaryRows.map((row) => [row.inviter_user_id, row]))
+    const codes = codeRows.map((row) => {
+      const stat = summaryByUser.get(row.user_id)
+      return {
+        userId: row.user_id,
+        code: row.code,
+        email: maskEmail(row.email ?? ''),
+        inviteeCount: Number(stat?.invitee_count ?? 0),
+        paidOrderCount: Number(stat?.paid_order_count ?? 0),
+        // USDT 通道：套餐计价，单位 USDT。
+        usdtAmount: Number(stat?.usdt_cents ?? 0) / 100,
+        // VaeHub 通道：实际收到的法币金额，单位随 pay_currency 而定。
+        fiatAmount: Number(stat?.fiat_amount ?? 0),
+        lastPaidAt: stat?.last_paid_at ? Number(stat.last_paid_at) : null,
+      }
+    })
+    // 总览：所有邀请码合并起来的口径。
+    const totalInvitee = codes.reduce((sum, item) => sum + item.inviteeCount, 0)
+    const totalUsdt = codes.reduce((sum, item) => sum + item.usdtAmount, 0)
+    const totalFiat = codes.reduce((sum, item) => sum + item.fiatAmount, 0)
+    return res.json({
+      totals: {
+        codes: codes.length,
+        invitees: totalInvitee,
+        paidOrderCount: codes.reduce((sum, item) => sum + item.paidOrderCount, 0),
+        usdtAmount: totalUsdt,
+        fiatAmount: totalFiat,
+      },
+      codes: codes.sort((a, b) => b.inviteeCount - a.inviteeCount || b.usdtAmount - a.usdtAmount),
+      details: detailRows.map((row) => ({
+        id: row.id,
+        code: row.code,
+        source: row.source,
+        boundAt: Number(row.bound_at),
+        inviter: maskEmail(row.inviter_email ?? ''),
+        invitee: maskEmail(row.invitee_email ?? ''),
+        inviteeUserId: row.invitee_user_id,
+        vipActive: Boolean(row.vip_expires_at && Number(row.vip_expires_at) > Date.now()),
+        paidOrderCount: Number(row.paid_order_count ?? 0),
+        usdtAmount: Number(row.usdt_cents ?? 0) / 100,
+        fiatAmount: Number(row.fiat_amount ?? 0),
+        lastPaidAt: row.last_paid_at ? Number(row.last_paid_at) : null,
       })),
     })
   }))

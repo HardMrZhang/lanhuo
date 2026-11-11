@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, onActivated, ref, watch } from 'vue'
+import { computed, nextTick, onActivated, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
 import { api } from '../api'
 import type { Category, DramaSummary, RecommendSlot } from '../types'
@@ -24,10 +24,18 @@ const keyword = ref('')
 const input = ref<HTMLInputElement | null>(null)
 const localVersion = ref(0)
 const page = ref(1)
+// 每页条数必须能被当前网格列数整除，否则最后一行会空出一格（看起来"每页少一部"）。
+// 列数随断点变化：>1024 五列 / 769-1024 四列 / 481-768 三列 / <=480 两列。
+const gridColumns = ref(5)
+function syncGridColumns() {
+  const w = window.innerWidth
+  gridColumns.value = w > 1024 ? 5 : w > 768 ? 4 : w > 480 ? 3 : 2
+}
+const PAGE_ROWS = 5
+const pageSize = computed(() => gridColumns.value * PAGE_ROWS)
 const addressCopied = ref(false)
 const addressError = ref('')
 const currentAddress = window.location.origin
-const pageSize = 24
 const SORTS = computed(() => [
   { id: 'hot', name: tr('最热', 'Popular') },
   { id: 'new', name: tr('最新', 'Newest') },
@@ -203,12 +211,16 @@ const rankedTags = computed(() => {
 const unavailableType = computed(() =>
   activeChannel.value === 'novels' ? tr('小说', 'novels') : '',
 )
-const totalPages = computed(() => Math.ceil(displayList.value.length / pageSize))
+const totalPages = computed(() => Math.ceil(displayList.value.length / pageSize.value))
 const pagedDramas = computed(() =>
-  displayList.value.slice((page.value - 1) * pageSize, page.value * pageSize),
+  displayList.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value),
 )
 watch(totalPages, (pages) => {
   page.value = Math.min(page.value, Math.max(1, pages))
+})
+// 列数变化（缩放窗口）会改变每页条数，回到第一页避免出现空白页。
+watch(gridColumns, () => {
+  page.value = 1
 })
 let requestId = 0
 let loadedQuery = ''
@@ -296,6 +308,14 @@ watch(
 )
 onActivated(() => {
   localVersion.value++
+})
+syncGridColumns()
+onMounted(() => {
+  syncGridColumns()
+  window.addEventListener('resize', syncGridColumns)
+})
+onBeforeUnmount(() => {
+  window.removeEventListener('resize', syncGridColumns)
 })
 </script>
 

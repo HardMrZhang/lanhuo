@@ -20,7 +20,7 @@ const s3 = new S3Client({
     : {}),
 })
 
-const DRAMA_RE = /^local-[a-f0-9]{16}$/
+const DRAMA_RE = /^(local-[a-f0-9]{16}|xv-[a-z0-9]{8,})$/
 const EP_RE = /^episode-(\d+)$/
 const FILE_RE = /^(index\.m3u8|seg_\d+\.ts)$/
 // 多码率 HLS 的档位子目录：<ep>/720p/seg_0000.ts

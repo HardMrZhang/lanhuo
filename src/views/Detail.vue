@@ -15,8 +15,19 @@ import SiteFooter from '../components/SiteFooter.vue'
 const props = defineProps<{ id: string }>()
 const router = useRouter()
 const drama = ref<Drama | null>(null)
-const related = ref<DramaSummary[]>([])
+const relatedPool = ref<DramaSummary[]>([])
 const categories = ref<Category[]>([])
+/**
+ * 相关推荐数量必须匹配 .drama-grid 的列数，否则最后一行会空出格子。
+ * 列数随断点变化：>1024 五列 / 769-1024 四列 / 481-768 三列 / <=480 两列。
+ */
+const gridColumns = ref(5)
+function syncGridColumns() {
+  const w = window.innerWidth
+  gridColumns.value = w > 1024 ? 5 : w > 768 ? 4 : w > 480 ? 3 : 2
+}
+/** 相关推荐取满一整行，窗口宽度变化时自动增减。 */
+const related = computed(() => relatedPool.value.slice(0, gridColumns.value))
 const loading = ref(true)
 const error = ref<'' | 'not-found' | 'load-failed'>('')
 const errorText = computed(() => error.value === 'not-found'
@@ -96,7 +107,7 @@ async function load() {
   loading.value = true
   error.value = ''
   drama.value = null
-  related.value = []
+  relatedPool.value = []
   episodeGroup.value = 0
   expanded.value = false
   shareFeedback.value = ''
@@ -118,9 +129,9 @@ async function load() {
       try {
         const list = await api.dramas({ category, sort: 'hot' })
         if (currentRequest === request)
-          related.value = list
+          relatedPool.value = list
             .filter((item) => item.id !== detail.id)
-            .slice(0, 6)
+            .slice(0, 12)
       } catch {
         // A failed recommendation request should not hide an available drama.
       }
@@ -138,10 +149,15 @@ async function load() {
 
 watch(() => props.id, load, { immediate: true })
 onActivated(refreshLocal)
-onMounted(() => { void refreshAccount() })
+onMounted(() => {
+  void refreshAccount()
+  syncGridColumns()
+  window.addEventListener('resize', syncGridColumns)
+})
 onBeforeUnmount(() => {
   request++
   clearTimeout(shareTimer)
+  window.removeEventListener('resize', syncGridColumns)
 })
 
 function play(ep: number) {
