@@ -33,6 +33,12 @@ data/local-import-manifest.json
 data/local-import-report.json
 data/video-import-map.json
 
+# XVIDEOS 下载：登录 Cookie（含账号凭证）与视频产物不入库
+data/xvideos/
+data/xvideos-import-map.json
+data/xvideos-uploaded.json
+downloads/
+
 # Element Plus 自动生成的类型声明
 auto-imports.d.ts
 components.d.ts
