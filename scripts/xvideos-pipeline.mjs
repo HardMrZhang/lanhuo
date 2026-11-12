@@ -259,7 +259,9 @@ async function captureCover(src, outFile) {
     const cap = await run('ffmpeg', [
       '-y', '-v', 'error', '-ss', String(sec), '-i', src,
       '-frames:v', '1',
-      '-vf', 'scale=720:-2:force_original_aspect_ratio=decrease,pad=720:1080:(ow-iw)/2:(oh-ih)/2:color=black',
+      // 只按宽度缩放，不 pad 成固定尺寸：
+      // 竖版视频（1080x1920）pad 到 720x1080 会因目标小于输入而失败。
+      '-vf', 'scale=720:-2:force_original_aspect_ratio=decrease,setsar=1',
       '-q:v', '3', outFile,
     ])
     if (cap.code === 0 && fs.existsSync(outFile) && fs.statSync(outFile).size > 0) return true
