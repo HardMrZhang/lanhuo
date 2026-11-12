@@ -4,7 +4,7 @@ import { useRoute, useRouter, type LocationQueryRaw } from 'vue-router'
 import { api } from '../api'
 import type { Category, DramaSummary, RecommendSlot } from '../types'
 import { favorites, history } from '../storage'
-import { contentChannels, dramasForChannel, isHotDrama, uniqueById } from '../navigation'
+import { contentChannels, dramasForChannel, isHotDrama, uniqueById, withWesternFirst } from '../navigation'
 import { locale, tr, translateCategory, translateMessage } from '../i18n'
 import SiteHeader from '../components/SiteHeader.vue'
 import SiteFooter from '../components/SiteFooter.vue'
@@ -103,6 +103,7 @@ const displayList = computed(() => {
     result = result
       .filter((d) => history.get(d.id))
       .sort((a, b) => (history.get(b.id)?.updatedAt ?? 0) - (history.get(a.id)?.updatedAt ?? 0))
+  else result = [...result].sort(withWesternFirst(() => 0))
   return result
 })
 /**
@@ -123,13 +124,13 @@ function dramasFromSlot(slot: RecommendSlot | undefined, pool: DramaSummary[]): 
 
 /** 首页只上带 🔥 的热门剧（见 navigation.isHotDrama），重复的不再出现。 */
 const isHot = isHotDrama
-const featured = computed(() => {
-  // 后台推荐位优先：配置了就按配置来，没配置才用默认规则。
-  const configured = dramasFromSlot(recommendSlots.value.find((slot) => slot.key === 'home_featured'), dramas.value)
-  if (configured) return configured.slice(0, 7)
-  // 轮播：新下载的欧美多集剧 + 必须是热门（带 🔥），集数多优先，其次播放量、上架时间。
+/** Featured carousel: always 7 items, backfill when admin slot is short. */
+const FEATURED_LIMIT = 7
+
+/** 默认轮播规则：欧美多集剧 + 必须是热门（带 🔥），集数多优先，其次播放量、上架时间。 */
+function defaultFeatured(pool: DramaSummary[]): DramaSummary[] {
   return uniqueById(
-    dramas.value
+    pool
       .filter((drama) => drama.episodeCount > 0 && drama.channelId === 'western' && isHot(drama))
       .sort(
         (a, b) =>
@@ -137,39 +138,79 @@ const featured = computed(() => {
           (b.views ?? 0) - (a.views ?? 0) ||
           (b.publishedAt ?? '').localeCompare(a.publishedAt ?? ''),
       ),
-  ).slice(0, 7)
+  )
+}
+
+const featured = computed(() => {
+  // 后台推荐位优先：配置了就按配置来。
+  const configured = dramasFromSlot(recommendSlots.value.find((slot) => slot.key === 'home_featured'), dramas.value)
+  if (configured && configured.length >= FEATURED_LIMIT) return configured.slice(0, FEATURED_LIMIT)
+  // 配置不足 7 条时用默认规则补齐，保证轮播始终是满的。
+  const picked = configured ? [...configured] : []
+  const taken = new Set(picked.map((d) => d.id))
+  for (const drama of defaultFeatured(dramas.value)) {
+    if (picked.length >= FEATURED_LIMIT) break
+    if (taken.has(drama.id)) continue
+    picked.push(drama)
+    taken.add(drama.id)
+  }
+  return picked.slice(0, FEATURED_LIMIT)
 })
+/**
+ * 推荐位内容 = 后台配置的 + 默认规则补齐。
+ *
+ * 后台可能只配了 1~2 条（手工挑选），直接用会导致首页大片空白，
+ * 所以不足 limit 时用默认规则补齐，已出现的 id 不重复。
+ */
+function slotWithFallback(
+  slotKey: string,
+  pool: DramaSummary[],
+  limit: number,
+  fallback: (source: DramaSummary[]) => DramaSummary[],
+): DramaSummary[] {
+  const configured = dramasFromSlot(recommendSlots.value.find((slot) => slot.key === slotKey), pool) ?? []
+  const picked = [...configured]
+  const taken = new Set(picked.map((d) => d.id))
+  for (const drama of fallback(pool)) {
+    if (picked.length >= limit) break
+    if (taken.has(drama.id)) continue
+    picked.push(drama)
+    taken.add(drama.id)
+  }
+  return picked.slice(0, limit)
+}
+
 /** 已在轮播出现过的剧，后面分区不再重复出现。 */
 const featuredIds = computed(() => new Set(featured.value.map((d) => d.id)))
-const ranking = computed(() => {
-  const configured = dramasFromSlot(recommendSlots.value.find((slot) => slot.key === 'home_ranking'), dramas.value)
-  if (configured) return configured.filter((d) => !featuredIds.value.has(d.id)).slice(0, 15)
-  return uniqueById(
-    [...dramas.value]
-      .filter((d) => isHot(d) && !featuredIds.value.has(d.id))
-      .sort((a, b) => (b.views ?? 0) - (a.views ?? 0)),
-  ).slice(0, 15)
-})
+const ranking = computed(() =>
+  slotWithFallback('home_ranking', dramas.value, 15, (pool) =>
+    uniqueById(
+      [...pool]
+        .filter((d) => isHot(d) && !featuredIds.value.has(d.id))
+        .sort(withWesternFirst((a, b) => (b.views ?? 0) - (a.views ?? 0))),
+    ),
+  ).filter((d) => !featuredIds.value.has(d.id)),
+)
 const rankingIds = computed(() => new Set([...featuredIds.value, ...ranking.value.map((d) => d.id)]))
-const latest = computed(() => {
-  const configured = dramasFromSlot(recommendSlots.value.find((slot) => slot.key === 'home_latest'), dramas.value)
-  if (configured) return configured.filter((d) => !rankingIds.value.has(d.id)).slice(0, 15)
-  return uniqueById(
-    [...dramas.value]
-      .filter((d) => isHot(d) && !rankingIds.value.has(d.id))
-      .sort((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? '')),
-  ).slice(0, 15)
-})
+const latest = computed(() =>
+  slotWithFallback('home_latest', dramas.value, 15, (pool) =>
+    uniqueById(
+      [...pool]
+        .filter((d) => isHot(d) && !rankingIds.value.has(d.id))
+        .sort(withWesternFirst((a, b) => (b.publishedAt ?? '').localeCompare(a.publishedAt ?? ''))),
+    ),
+  ).filter((d) => !rankingIds.value.has(d.id)),
+)
 const latestIds = computed(() => new Set([...rankingIds.value, ...latest.value.map((d) => d.id)]))
-const topRated = computed(() => {
-  const configured = dramasFromSlot(recommendSlots.value.find((slot) => slot.key === 'home_top_rated'), dramas.value)
-  if (configured) return configured.filter((d) => !latestIds.value.has(d.id)).slice(0, 15)
-  return uniqueById(
-    [...dramas.value]
-      .filter((d) => isHot(d) && !latestIds.value.has(d.id))
-      .sort((a, b) => (b.rating ?? 0) - (a.rating ?? 0)),
-  ).slice(0, 15)
-})
+const topRated = computed(() =>
+  slotWithFallback('home_top_rated', dramas.value, 15, (pool) =>
+    uniqueById(
+      [...pool]
+        .filter((d) => isHot(d) && !latestIds.value.has(d.id))
+        .sort(withWesternFirst((a, b) => (b.rating ?? 0) - (a.rating ?? 0))),
+    ),
+  ).filter((d) => !latestIds.value.has(d.id)),
+)
 const homeShownIds = computed(
   () =>
     new Set([
@@ -181,9 +222,16 @@ const homeShownIds = computed(
 )
 const categorySections = computed(() => {
   const taken = new Set(homeShownIds.value)
-  return contentChannels
+  // 欧美是主要推广市场，所以欧美分区排在最前面。
+  const ordered = [...contentChannels]
     .filter((channel) => channel.available)
+    .sort((a, b) => {
+      const wa = a.id === 'western' ? 0 : 1
+      const wb = b.id === 'western' ? 0 : 1
+      return wa - wb
+    })
     .slice(0, 4)
+  return ordered
     .map((channel) => {
       const list = uniqueById(
         dramasForChannel(dramas.value, channel.id).filter((d) => isHot(d) && !taken.has(d.id)),
@@ -215,6 +263,34 @@ const totalPages = computed(() => Math.ceil(displayList.value.length / pageSize.
 const pagedDramas = computed(() =>
   displayList.value.slice((page.value - 1) * pageSize.value, page.value * pageSize.value),
 )
+
+/**
+ * 分页按钮只保留一行。
+ *
+ * 剧多了以后总页数会到几十页，全渲染会把分页条撑成好几行。
+ * 这里只保留：前 9 页、尾页、当前页及其左右邻居，
+ * 中间的连续区间用省略号折叠。
+ */
+type PageItem = { kind: 'number'; value: number } | { kind: 'gap' }
+const pageItems = computed<PageItem[]>(() => {
+  const total = totalPages.value
+  const current = page.value
+  if (total <= 9) return Array.from({ length: total }, (_, i) => ({ kind: 'number', value: i + 1 }))
+
+  // 前 9 页固定展示，方便快速跳到靠前的位置；其余只留当前页附近。
+  const pages = new Set<number>([1, total, current, current - 1, current + 1])
+  for (let n = 2; n <= Math.min(9, total); n++) pages.add(n)
+
+  const result: PageItem[] = []
+  let prev = 0
+  for (let n = 1; n <= total; n++) {
+    if (!pages.has(n)) continue
+    if (prev && n - prev > 1) result.push({ kind: 'gap' })
+    result.push({ kind: 'number', value: n })
+    prev = n
+  }
+  return result
+})
 watch(totalPages, (pages) => {
   page.value = Math.min(page.value, Math.max(1, pages))
 })
@@ -547,15 +623,17 @@ onBeforeUnmount(() => {
           </div>
           <nav v-if="totalPages > 1" class="pagination" :aria-label="tr('分页', 'Pagination')">
             <button :disabled="page === 1" :aria-label="tr('上一页', 'Previous page')" @click="goPage(page - 1)">‹</button>
-            <button
-              v-for="number in totalPages"
-              :key="number"
-              :class="{ active: page === number }"
-              :aria-current="page === number ? 'page' : undefined"
-              @click="goPage(number)"
-            >
-              {{ number }}
-            </button>
+            <template v-for="(item, index) in pageItems" :key="`${item.kind}-${index}`">
+              <span v-if="item.kind === 'gap'" class="pagination-gap" aria-hidden="true">…</span>
+              <button
+                v-else
+                :class="{ active: page === item.value }"
+                :aria-current="page === item.value ? 'page' : undefined"
+                @click="goPage(item.value)"
+              >
+                {{ item.value }}
+              </button>
+            </template>
             <button :disabled="page === totalPages" :aria-label="tr('下一页', 'Next page')" @click="goPage(page + 1)">
               ›
             </button>
@@ -860,7 +938,8 @@ main.container {
   display: flex;
   gap: 8px;
   justify-content: center;
-  flex-wrap: wrap;
+  /* 不换行：页码多时靠省略号折叠，始终保持一行 */
+  flex-wrap: nowrap;
   margin-top: 32px;
 }
 .pagination button {
@@ -875,6 +954,15 @@ main.container {
 .pagination button.active {
   background: var(--accent);
   color: #fff;
+}
+.pagination-gap {
+  display: inline-flex;
+  align-items: center;
+  height: 38px;
+  padding-inline: 2px;
+  color: var(--fg-3, var(--fg-2));
+  font-size: 14px;
+  user-select: none;
 }
 @media (max-width: 768px) {
   .browse-head h1 {

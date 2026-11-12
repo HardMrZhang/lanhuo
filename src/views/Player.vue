@@ -29,6 +29,12 @@ const muted = ref(false)
 const buffering = ref(false)
 const showDrawer = ref(false)
 const progress = ref(0)
+const currentTime = ref(0)
+const duration = ref(0)
+const dragging = ref(false)
+const dragRatio = ref(0)
+const speed = ref(1)
+const speeds = [0.75, 1, 1.25, 1.5, 2]
 const needGesture = ref(false)
 const playbackError = ref('')
 
@@ -163,6 +169,9 @@ watch(
 // 当前集变化：同步 URL、记录观看历史、预取下一集
 watch(current, (no) => {
   progress.value = 0
+  currentTime.value = 0
+  duration.value = 0
+  dragging.value = false
   buffering.value = false
   needGesture.value = false
   playbackError.value = ''
@@ -197,8 +206,16 @@ function onEnded(no: number) {
 }
 function onProgress(no: number, cur: number, dur: number) {
   if (no !== current.value) return
+  if (Number.isFinite(dur) && dur > 0) duration.value = dur
+  // 拖动中不要被 timeupdate 覆盖
+  if (dragging) return
+  currentTime.value = cur
   progress.value =
     Number.isFinite(dur) && dur > 0 ? Math.max(0, Math.min(1, cur / dur)) : 0
+}
+function onDuration(no: number, dur: number) {
+  if (no !== current.value) return
+  duration.value = dur
 }
 function onWaiting(no: number, waiting: boolean) {
   if (no === current.value) buffering.value = waiting && !playbackError.value
@@ -219,6 +236,76 @@ function onGesture(no: number) {
   if (no !== current.value || playbackError.value) return
   needGesture.value = true
   buffering.value = false
+}
+
+// ---------- 进度条拖动 ----------
+function ratioFromEvent(event: PointerEvent | TouchEvent): number {
+  const target = event.currentTarget as HTMLElement
+  const rect = target.getBoundingClientRect()
+  if (!rect.width) return 0
+  let clientX: number
+  if ('touches' in event) {
+    const touch = event.touches[0] ?? event.changedTouches[0]
+    if (!touch) return 0
+    clientX = touch.clientX
+  } else {
+    clientX = event.clientX
+  }
+  return Math.max(0, Math.min(1, (clientX - rect.left) / rect.width))
+}
+
+function onBarPointerDown(event: PointerEvent) {
+  if (!duration.value) return
+  dragging.value = true
+  dragRatio.value = ratioFromEvent(event)
+  ;(event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId)
+  event.preventDefault()
+}
+function onBarPointerMove(event: PointerEvent) {
+  if (!dragging.value) return
+  dragRatio.value = ratioFromEvent(event)
+  event.preventDefault()
+}
+function onBarPointerUp() {
+  if (!dragging.value) return
+  dragging.value = false
+  const ratio = dragRatio.value
+  players.value[current.value]?.seekRatio(ratio)
+  currentTime.value = ratio * duration.value
+  progress.value = ratio
+}
+function onBarTouchStart(event: TouchEvent) {
+  if (!duration.value) return
+  dragging.value = true
+  dragRatio.value = ratioFromEvent(event)
+}
+function onBarTouchMove(event: TouchEvent) {
+  if (!dragging.value) return
+  dragRatio.value = ratioFromEvent(event)
+}
+function onBarTouchEnd() {
+  if (!dragging.value) return
+  dragging.value = false
+  const ratio = dragRatio.value
+  players.value[current.value]?.seekRatio(ratio)
+  currentTime.value = ratio * duration.value
+  progress.value = ratio
+}
+// ---------- 倍速 ----------
+function formatTime(seconds: number) {
+  if (!Number.isFinite(seconds) || seconds < 0) return '00:00'
+  const total = Math.floor(seconds)
+  const h = Math.floor(total / 3600)
+  const m = Math.floor((total % 3600) / 60)
+  const s = total % 60
+  const mm = h > 0 ? String(m).padStart(2, '0') : String(m)
+  const ss = String(s).padStart(2, '0')
+  return h > 0 ? `${h}:${mm}:${ss}` : `${mm}:${ss}`
+}
+
+function setSpeed(value: number) {
+  speed.value = value
+  players.value[current.value]?.setPlaybackRate(value)
 }
 function retryPlayback() {
   playbackError.value = ''
@@ -266,6 +353,7 @@ onBeforeUnmount(() => io?.disconnect())
             :muted="muted"
             @ended="onEnded(e.no)"
             @progress="(cur, dur) => onProgress(e.no, cur, dur)"
+            @duration="(dur) => onDuration(e.no, dur)"
             @waiting="onWaiting(e.no, $event)"
             @ready="onReady(e.no)"
             @error="onPlaybackError(e.no, $event)"
@@ -361,7 +449,42 @@ onBeforeUnmount(() => io?.disconnect())
           {{ tr('选集', 'Episodes') }} · {{ drama.status === 'completed' ? tr(`共${total}集`, `${total} episodes`) : tr(`更至${latestEpisode}集`, `Updated to episode ${latestEpisode}`) }}
           ›
         </button>
-        <div class="bar"><i :style="{ width: `${progress * 100}%` }" /></div>
+        <div class="speed-row">
+          <button
+            v-for="rate in speeds"
+            :key="rate"
+            class="speed"
+            :class="{ active: speed === rate }"
+            type="button"
+            @click="setSpeed(rate)"
+          >
+            {{ rate }}x
+          </button>
+        </div>
+        <div class="bar-wrap">
+          <div
+            class="bar"
+            role="slider"
+            :aria-valuemin="0"
+            :aria-valuemax="Math.round(duration)"
+            :aria-valuenow="Math.round(currentTime)"
+            :aria-label="tr('播放进度', 'Playback progress')"
+            @pointerdown="onBarPointerDown"
+            @pointermove="onBarPointerMove"
+            @pointerup="onBarPointerUp"
+            @pointercancel="onBarPointerUp"
+            @touchstart.prevent="onBarTouchStart"
+            @touchmove.prevent="onBarTouchMove"
+            @touchend="onBarTouchEnd"
+          >
+            <i :style="{ width: `${(dragging ? dragRatio : progress) * 100}%` }" />
+            <b class="thumb" :style="{ left: `${(dragging ? dragRatio : progress) * 100}%` }" />
+          </div>
+          <div class="bar-meta">
+            <span>{{ formatTime(currentTime) }}</span>
+            <span>{{ formatTime(duration) }}</span>
+          </div>
+        </div>
       </footer>
 
       <!-- 缓冲提示 -->
@@ -513,18 +636,62 @@ onBeforeUnmount(() => io?.disconnect())
   font-size: 14px;
   backdrop-filter: blur(6px);
 }
-.bar {
+.bar-wrap {
   margin-top: 10px;
-  height: 2px;
+  pointer-events: auto;
+  touch-action: none;
+}
+.bar {
+  position: relative;
+  height: 4px;
   background: rgba(255, 255, 255, 0.25);
-  border-radius: 1px;
-  overflow: hidden;
+  border-radius: 2px;
 }
 .bar i {
   display: block;
   height: 100%;
   background: var(--accent);
+  border-radius: 2px;
   transition: width 0.25s linear;
+}
+.bar .thumb {
+  position: absolute;
+  top: 50%;
+  width: 12px;
+  height: 12px;
+  margin: -6px 0 0 -6px;
+  border-radius: 50%;
+  background: #fff;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.5);
+  pointer-events: none;
+}
+.bar-meta {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 4px;
+  font-size: 11px;
+  color: rgba(255, 255, 255, 0.75);
+  font-variant-numeric: tabular-nums;
+}
+.speed-row {
+  pointer-events: auto;
+  display: flex;
+  gap: 6px;
+  margin-top: 10px;
+}
+.speed {
+  flex: 1;
+  padding: 6px 0;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.12);
+  color: #fff;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+.speed.active {
+  background: var(--accent);
+  color: var(--accent-fg);
 }
 .spinner {
   position: absolute;

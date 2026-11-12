@@ -17,6 +17,7 @@ const emit = defineEmits<{
   ready: []
   error: [message: string]
   'need-gesture': []
+  'duration': [duration: number]
 }>()
 
 const video = ref<HTMLVideoElement | null>(null)
@@ -27,6 +28,8 @@ let hls: Hls | null = null
 let hlsReady = false
 let attachedSrc = ''
 let sourceGeneration = 0
+/** 拖动进度条时的目标位置，等 duration 就绪后再跳转 */
+let pendingSeek: number | null = null
 
 const isHls = (url: string) => /\.m3u8(\?|$)/i.test(url)
 
@@ -82,6 +85,14 @@ function attach(force = false) {
       hlsReady = true
       void play()
     })
+    instance.on(Hls.Events.LEVEL_LOADED, (_event, data) => {
+      // HLS 的总时长来自 level 的 duration，第一个 level 加载后才有值。
+      const total = (data as { details?: { totalDuration?: number } }).details?.totalDuration
+      if (typeof total === 'number' && total > 0 && total !== knownDuration.value) {
+        knownDuration.value = total
+        emit('duration', total)
+      }
+    })
     instance.on(Hls.Events.ERROR, (_event, data) => {
       if (!data.fatal || hls !== instance || !props.active) return
       fail(
@@ -102,6 +113,8 @@ function detach() {
   sourceGeneration++
   attachedSrc = ''
   failed.value = false
+  pendingSeek = null
+  knownDuration.value = 0
   hls?.destroy()
   hls = null
   hlsReady = false
@@ -112,6 +125,9 @@ function detach() {
     element.load()
   }
 }
+
+/** 记录倍速，重新加载/切集后保持 */
+const playbackRate = ref(1)
 
 async function play() {
   const element = video.value
@@ -125,6 +141,8 @@ async function play() {
     return
   const generation = sourceGeneration
   element.muted = props.muted
+  element.playbackRate = playbackRate.value
+  element.defaultPlaybackRate = playbackRate.value
   try {
     await element.play()
     if (generation === sourceGeneration && props.active) paused.value = false
@@ -153,7 +171,42 @@ function toggle() {
   else pause()
 }
 function seek(seconds: number) {
-  if (video.value) video.value.currentTime = seconds
+  if (!video.value) return
+  // HLS 未就绪时直接改 currentTime 会被忽略，seekable 之前先存住目标位置，
+  // 等元数据/清单就绪后再跳过去 —— 否则用户拖动进度条会“没反应”。
+  const target = Math.max(0, seconds)
+  pendingSeek = target
+  if (Number.isFinite(video.value.duration) && video.value.duration > 0) {
+    const clamped = Math.min(target, Math.max(0, video.value.duration - 0.1))
+    video.value.currentTime = clamped
+    pendingSeek = null
+  }
+}
+
+/** 已知的时长（duration 事件在部分源上触发较晚） */
+const knownDuration = ref(0)
+
+/** 拖动进度条时用的比例 seek（0~1），duration 未就绪时按已知时长换算 */
+function seekRatio(ratio: number) {
+  const element = video.value
+  const duration =
+    element && Number.isFinite(element.duration) ? element.duration : knownDuration.value
+  if (!duration || duration <= 0) return
+  seek(ratio * duration)
+}
+
+function onDurationChange() {
+  const element = video.value
+  if (!element) return
+  const d = element.duration
+  if (!Number.isFinite(d) || d <= 0) return
+  knownDuration.value = d
+  emit('duration', d)
+  // 拖动过但时长后到的情况：现在才知道该跳到哪
+  if (pendingSeek !== null) {
+    element.currentTime = Math.min(pendingSeek, Math.max(0, d - 0.1))
+    pendingSeek = null
+  }
 }
 function retry() {
   if (!props.active) return
@@ -206,12 +259,41 @@ watch(
   },
   { flush: 'post' },
 )
+// 倍速在重新加载后需要重新应用
+watch(playbackRate, (rate) => {
+  if (video.value) {
+    video.value.playbackRate = rate
+    video.value.defaultPlaybackRate = rate
+  }
+})
 onBeforeUnmount(() => {
   mounted = false
   detach()
 })
 
-defineExpose({ play, pause, toggle, seek, retry })
+/** 设置倍速（切集/重新加载后需要重设） */
+function setPlaybackRate(rate: number) {
+  playbackRate.value = rate
+  if (!video.value) return
+  video.value.playbackRate = rate
+  video.value.defaultPlaybackRate = rate
+}
+
+/** 供外部读取 <video> 元素 */
+function videoElement() {
+  return video.value
+}
+
+defineExpose({
+  play,
+  pause,
+  toggle,
+  seek,
+  seekRatio,
+  retry,
+  setPlaybackRate,
+  videoElement,
+})
 </script>
 
 <template>
@@ -228,6 +310,7 @@ defineExpose({ play, pause, toggle, seek, retry })
       preload="auto"
       @ended="active && emit('ended')"
       @timeupdate="onTime"
+      @durationchange="onDurationChange"
       @waiting="active && !failed && emit('waiting', true)"
       @playing="onPlaying"
       @pause="paused = true"
